@@ -1,0 +1,5 @@
+{
+  "botToken": "ВСТАВЬТЕ_ТОКЕН_ОТ_BotFather",
+  "port": 8765,
+  "coachSecret": "trena-local"
+}

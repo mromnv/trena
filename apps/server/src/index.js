@@ -1,0 +1,653 @@
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import express from 'express';
+import cors from 'cors';
+import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
+import {
+  createLoginToken,
+  peekLoginToken,
+  claimLoginToken,
+  latestUnclaimedLogin,
+  createSession,
+  getSession,
+  setSessionRole,
+  destroySession,
+  findUserById,
+  findUserByUsername,
+  publicUser,
+  userProfiles,
+  ensureProfile,
+  revokeProfile,
+  requestLink,
+  listAthletesForCoach,
+  listCoachesForAthlete,
+  listCoachDirectory,
+  setLinkStatus,
+  removeLink,
+  getWorkouts,
+  saveWorkout,
+  deleteWorkout,
+  getChat,
+  addChatMessage,
+  getDossier,
+  saveDossier,
+  canCoachAccessAthlete,
+  normUser,
+  markBotVerified,
+  listAllUsers,
+  listAllLinks,
+  adminAssignLink,
+  adminRemoveLink,
+  createDeviceToken,
+  consumeDeviceToken,
+} from './db.js';
+import { startPolling, setupWebhook, handleUpdate, notifyUser } from './bot.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
+
+const PORT = Number(process.env.PORT || 8765);
+const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
+const BOT_USERNAME = (process.env.BOT_USERNAME || 'Trenatrena_bot').replace(/^@/, '');
+const MODE = process.env.MODE || 'local';
+const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+const COOKIE = 'trena_sid';
+const DEVICE_COOKIE = 'trena_device';
+const ADMIN_TELEGRAM_IDS = String(process.env.ADMIN_TELEGRAM_IDS || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+if (!BOT_TOKEN) {
+  console.error('BOT_TOKEN is missing in .env');
+  process.exit(1);
+}
+
+const app = express();
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json({ limit: '1mb' }));
+app.use(cookieParser());
+
+function sid(req) {
+  return req.cookies?.[COOKIE] || req.headers['x-session-id'] || null;
+}
+
+function requireAuth(req, res, next) {
+  const session = getSession(sid(req));
+  if (!session) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const user = findUserById(session.user_id);
+  if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  req.session = session;
+  req.user = user;
+  next();
+}
+
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.session?.role) return res.status(403).json({ ok: false, error: 'role_required' });
+    if (req.session.role !== role) return res.status(403).json({ ok: false, error: 'forbidden' });
+    next();
+  };
+}
+
+function isAdminUser(user) {
+  return !!(user && ADMIN_TELEGRAM_IDS.includes(String(user.telegram_id)));
+}
+
+function requireAdmin(req, res, next) {
+  if (!isAdminUser(req.user)) {
+    return res.status(403).json({ ok: false, error: 'admin_only', message: 'Только администратор' });
+  }
+  next();
+}
+
+function setAuthCookies(res, sessionId, deviceToken) {
+  res.cookie(COOKIE, sessionId, {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 30 * 24 * 3600 * 1000,
+  });
+  if (deviceToken) {
+    res.cookie(DEVICE_COOKIE, deviceToken, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 365 * 24 * 3600 * 1000,
+    });
+  }
+}
+
+function authPayload(user, session) {
+  return {
+    ok: true,
+    status: 'ok',
+    sessionId: session.id,
+    user: publicUser(user),
+    roles: userProfiles(user.id),
+    isAdmin: isAdminUser(user),
+    botVerified: !!user.bot_verified_at,
+  };
+}
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    ok: true,
+    mode: MODE,
+    bot: BOT_USERNAME,
+    publicUrl: PUBLIC_URL || null,
+  });
+});
+
+app.post('/api/auth/telegram/start', (_req, res) => {
+  const loginToken = createLoginToken();
+  const deepLink = `https://t.me/${BOT_USERNAME}?start=login_${loginToken}`;
+  res.json({ ok: true, loginToken, deepLink, bot: BOT_USERNAME });
+});
+
+function finishLogin(res, loginToken, t) {
+  const user = findUserById(t.user_id);
+  if (!user) return res.json({ ok: true, status: 'pending' });
+  claimLoginToken(loginToken || t.token);
+  markBotVerified(user.id);
+  ensureProfile(user.id, 'athlete');
+  const session = createSession(user.id, null);
+  const deviceToken = createDeviceToken(user.id);
+  setAuthCookies(res, session.id, deviceToken);
+  return res.json(authPayload(user, session));
+}
+
+app.get('/api/auth/telegram/poll', (req, res) => {
+  const loginToken = String(req.query.token || '');
+  const t = peekLoginToken(loginToken);
+  if (!t) return res.json({ ok: true, status: 'pending' });
+  return finishLogin(res, loginToken, t);
+});
+
+/** Если бот уже подтвердил вход, а вкладка потеряла токен — забрать последний unclaimed */
+app.post('/api/auth/telegram/recover', (_req, res) => {
+  const t = latestUnclaimedLogin();
+  if (!t) return res.json({ ok: true, status: 'pending' });
+  return finishLogin(res, t.token, t);
+});
+
+/** Повторный вход без бота (устройство уже подтверждено один раз) */
+app.post('/api/auth/resume', (req, res) => {
+  const device = req.cookies?.[DEVICE_COOKIE];
+  if (!device) return res.json({ ok: true, status: 'need_bot' });
+  const user = consumeDeviceToken(device);
+  if (!user || !user.bot_verified_at) {
+    res.clearCookie(DEVICE_COOKIE);
+    return res.json({ ok: true, status: 'need_bot' });
+  }
+  ensureProfile(user.id, 'athlete');
+  const session = createSession(user.id, null);
+  setAuthCookies(res, session.id, device);
+  return res.json(authPayload(user, session));
+});
+
+app.get('/api/me', requireAuth, (req, res) => {
+  res.json({
+    ok: true,
+    user: publicUser(req.user),
+    role: req.session.role,
+    roles: userProfiles(req.user.id),
+    isAdmin: isAdminUser(req.user),
+    botVerified: !!req.user.bot_verified_at,
+  });
+});
+
+app.post('/api/auth/role', requireAuth, (req, res) => {
+  const role = req.body?.role;
+  if (role !== 'coach' && role !== 'athlete' && role !== 'admin') {
+    return res.status(400).json({ ok: false, error: 'invalid_role' });
+  }
+  if (role === 'admin') {
+    if (!isAdminUser(req.user)) {
+      return res.status(403).json({ ok: false, error: 'admin_only', message: 'Нет прав администратора' });
+    }
+    setSessionRole(req.session.id, 'admin');
+    return res.json({
+      ok: true,
+      role: 'admin',
+      user: publicUser(req.user),
+      roles: userProfiles(req.user.id),
+      isAdmin: true,
+    });
+  }
+  if (role === 'coach') {
+    const roles = userProfiles(req.user.id);
+    if (!roles.includes('coach') && !isAdminUser(req.user)) {
+      return res.status(403).json({
+        ok: false,
+        error: 'coach_not_granted',
+        message: 'Роль тренера выдаёт только администратор',
+      });
+    }
+    if (!roles.includes('coach') && isAdminUser(req.user)) {
+      ensureProfile(req.user.id, 'coach');
+    }
+  }
+  if (role === 'athlete') ensureProfile(req.user.id, 'athlete');
+  setSessionRole(req.session.id, role);
+  res.json({
+    ok: true,
+    role,
+    user: publicUser(req.user),
+    roles: userProfiles(req.user.id),
+    isAdmin: isAdminUser(req.user),
+  });
+});
+
+app.post('/api/auth/logout', requireAuth, (req, res) => {
+  destroySession(req.session.id);
+  res.clearCookie(COOKIE);
+  // устройство оставляем — повторный вход без бота
+  res.json({ ok: true });
+});
+
+/** Coach: athletes */
+app.get('/api/coach/athletes', requireAuth, requireRole('coach'), (req, res) => {
+  res.json({ ok: true, athletes: listAthletesForCoach(req.user.id) });
+});
+
+app.post('/api/coach/athletes', requireAuth, requireRole('coach'), async (req, res) => {
+  const username = normUser(req.body?.username);
+  if (!username) return res.status(400).json({ ok: false, error: 'username_required' });
+  const athlete = findUserByUsername(username);
+  if (!athlete) {
+    return res.status(404).json({
+      ok: false,
+      error: 'athlete_not_found',
+      message: 'Ученик ещё не входил в TRENA через Telegram. Попросите открыть приложение и войти.',
+    });
+  }
+  if (athlete.id === req.user.id) {
+    return res.status(400).json({ ok: false, error: 'cannot_add_self' });
+  }
+  ensureProfile(athlete.id, 'athlete');
+  let link = requestLink({
+    coachId: req.user.id,
+    athleteId: athlete.id,
+    initiatedBy: 'coach',
+  });
+  link = setLinkStatus(link.id, req.user.id, 'active') || link;
+  await notifyUser(
+    BOT_TOKEN,
+    athlete.telegram_id,
+    `Тренер <b>${escapeHtml(req.user.first_name || req.user.username)}</b>${req.user.username ? ` (@${escapeHtml(req.user.username)})` : ''} добавил вас в TRENA.`
+  );
+  res.json({ ok: true, link: { ...link, athlete: publicUser(athlete) } });
+});
+
+app.post('/api/coach/athletes/:linkId/accept', requireAuth, requireRole('coach'), async (req, res) => {
+  const link = setLinkStatus(Number(req.params.linkId), req.user.id, 'active');
+  if (!link) return res.status(404).json({ ok: false, error: 'not_found' });
+  const athlete = findUserById(link.athlete_user_id);
+  await notifyUser(BOT_TOKEN, athlete?.telegram_id, 'Тренер принял вашу заявку в TRENA.');
+  res.json({ ok: true, link: { ...link, athlete: publicUser(athlete) } });
+});
+
+app.post('/api/coach/athletes/:linkId/reject', requireAuth, requireRole('coach'), (req, res) => {
+  const link = removeLink(Number(req.params.linkId), req.user.id);
+  if (!link) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true });
+});
+
+app.delete('/api/coach/athletes/:linkId', requireAuth, requireRole('coach'), (req, res) => {
+  const link = removeLink(Number(req.params.linkId), req.user.id);
+  if (!link) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true });
+});
+
+/** Athlete: my coaches + directory for search */
+app.get('/api/athlete/coaches', requireAuth, requireRole('athlete'), (req, res) => {
+  const q = normUser(req.query.q || '');
+  let directory = listCoachDirectory().filter((c) => c.id !== req.user.id);
+  if (q) {
+    directory = directory.filter((c) => {
+      const hay = `${c.username} ${c.first_name} ${c.last_name}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  res.json({
+    ok: true,
+    coaches: listCoachesForAthlete(req.user.id),
+    directory,
+  });
+});
+
+app.post('/api/athlete/coaches', requireAuth, requireRole('athlete'), async (req, res) => {
+  const username = normUser(req.body?.username);
+  const coachId = Number(req.body?.coachId || 0);
+  const coach = coachId ? findUserById(coachId) : findUserByUsername(username);
+  if (!coach) {
+    return res.status(404).json({
+      ok: false,
+      error: 'coach_not_found',
+      message: 'Тренер не найден. Проверьте @username или выберите из списка.',
+    });
+  }
+  const roles = userProfiles(coach.id);
+  if (!roles.includes('coach')) {
+    return res.status(404).json({
+      ok: false,
+      error: 'not_a_coach',
+      message: 'У этого пользователя нет роли тренера.',
+    });
+  }
+  if (coach.id === req.user.id) {
+    return res.status(400).json({ ok: false, error: 'cannot_add_self' });
+  }
+  const link = requestLink({
+    coachId: coach.id,
+    athleteId: req.user.id,
+    initiatedBy: 'athlete',
+  });
+  await notifyUser(
+    BOT_TOKEN,
+    coach.telegram_id,
+    `Ученик <b>${escapeHtml(req.user.first_name || req.user.username)}</b>${req.user.username ? ` (@${escapeHtml(req.user.username)})` : ''} хочет присоединиться к вам в TRENA.`
+  );
+  res.json({ ok: true, link: { ...link, coach: publicUser(coach) } });
+});
+
+/** Admin */
+app.get('/api/admin/overview', requireAuth, requireAdmin, (_req, res) => {
+  res.json({
+    ok: true,
+    users: listAllUsers(),
+    links: listAllLinks(),
+    coaches: listAllUsers().filter((u) => u.roles.includes('coach')),
+  });
+});
+
+app.post('/api/admin/grant-coach', requireAuth, requireAdmin, async (req, res) => {
+  const username = normUser(req.body?.username);
+  const userId = Number(req.body?.userId || 0);
+  const user = userId ? findUserById(userId) : findUserByUsername(username);
+  if (!user) {
+    return res.status(404).json({
+      ok: false,
+      error: 'not_found',
+      message: 'Пользователь не найден. Он должен один раз войти через Telegram-бота.',
+    });
+  }
+  ensureProfile(user.id, 'coach');
+  ensureProfile(user.id, 'athlete');
+  await notifyUser(
+    BOT_TOKEN,
+    user.telegram_id,
+    'Вам выдана роль <b>тренера</b> в TRENA. Войдите в приложение и выберите «Я тренер».'
+  );
+  res.json({ ok: true, user: { ...publicUser(user), roles: userProfiles(user.id) } });
+});
+
+app.post('/api/admin/revoke-coach', requireAuth, requireAdmin, (req, res) => {
+  const username = normUser(req.body?.username);
+  const userId = Number(req.body?.userId || 0);
+  const user = userId ? findUserById(userId) : findUserByUsername(username);
+  if (!user) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (isAdminUser(user) && String(user.telegram_id) === String(req.user.telegram_id)) {
+    // админ может снять с себя coach, это ок
+  }
+  revokeProfile(user.id, 'coach');
+  res.json({ ok: true, user: { ...publicUser(user), roles: userProfiles(user.id) } });
+});
+
+app.post('/api/admin/assign', requireAuth, requireAdmin, async (req, res) => {
+  const coachName = normUser(req.body?.coachUsername || req.body?.coach);
+  const athleteName = normUser(req.body?.athleteUsername || req.body?.athlete);
+  const coach = findUserByUsername(coachName) || findUserById(Number(req.body?.coachId || 0));
+  const athlete = findUserByUsername(athleteName) || findUserById(Number(req.body?.athleteId || 0));
+  if (!coach || !athlete) {
+    return res.status(404).json({
+      ok: false,
+      error: 'not_found',
+      message: 'Укажите @username тренера и ученика (оба должны один раз войти через бота).',
+    });
+  }
+  if (coach.id === athlete.id) {
+    return res.status(400).json({ ok: false, error: 'cannot_link_self' });
+  }
+  const link = adminAssignLink(coach.id, athlete.id);
+  await notifyUser(
+    BOT_TOKEN,
+    athlete.telegram_id,
+    `Администратор назначил вам тренера <b>${escapeHtml(coach.first_name || coach.username)}</b>${coach.username ? ` (@${escapeHtml(coach.username)})` : ''} в TRENA.`
+  );
+  await notifyUser(
+    BOT_TOKEN,
+    coach.telegram_id,
+    `Администратор назначил ученика <b>${escapeHtml(athlete.first_name || athlete.username)}</b>${athlete.username ? ` (@${escapeHtml(athlete.username)})` : ''} в TRENA.`
+  );
+  res.json({
+    ok: true,
+    link: {
+      ...link,
+      coach: publicUser(coach),
+      athlete: publicUser(athlete),
+    },
+  });
+});
+
+app.delete('/api/admin/links/:id', requireAuth, requireAdmin, (req, res) => {
+  const link = adminRemoveLink(Number(req.params.id));
+  if (!link) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true });
+});
+
+/** Athlete dossier (профиль, цели, VDOT) */
+app.get('/api/athletes/:id/dossier', requireAuth, (req, res) => {
+  const athleteId = Number(req.params.id);
+  if (req.session.role === 'coach') {
+    if (!canCoachAccessAthlete(req.user.id, athleteId)) {
+      return res.status(403).json({ ok: false, error: 'forbidden' });
+    }
+  } else if (req.session.role === 'athlete') {
+    if (req.user.id !== athleteId) {
+      return res.status(403).json({ ok: false, error: 'forbidden' });
+    }
+  } else {
+    return res.status(403).json({ ok: false, error: 'role_required' });
+  }
+  res.json({ ok: true, dossier: getDossier(athleteId), athlete: publicUser(findUserById(athleteId)) });
+});
+
+app.put('/api/athletes/:id/dossier', requireAuth, (req, res) => {
+  const athleteId = Number(req.params.id);
+  if (req.session.role === 'coach') {
+    if (!canCoachAccessAthlete(req.user.id, athleteId)) {
+      return res.status(403).json({ ok: false, error: 'forbidden' });
+    }
+  } else if (req.session.role === 'athlete') {
+    if (req.user.id !== athleteId) {
+      return res.status(403).json({ ok: false, error: 'forbidden' });
+    }
+  } else {
+    return res.status(403).json({ ok: false, error: 'role_required' });
+  }
+  const dossier = saveDossier(athleteId, req.body || {});
+  res.json({ ok: true, dossier });
+});
+
+/** Workouts */
+app.get('/api/workouts', requireAuth, (req, res) => {
+  const athleteId = Number(req.query.athleteId || (req.session.role === 'athlete' ? req.user.id : 0));
+  if (!athleteId) return res.status(400).json({ ok: false, error: 'athleteId_required' });
+  if (req.session.role === 'coach') {
+    const ok = listAthletesForCoach(req.user.id).some(
+      (l) => l.athlete_user_id === athleteId && l.status === 'active'
+    );
+    if (!ok) return res.status(403).json({ ok: false, error: 'forbidden' });
+    return res.json({ ok: true, workouts: getWorkouts(athleteId, req.user.id) });
+  }
+  if (req.user.id !== athleteId) return res.status(403).json({ ok: false, error: 'forbidden' });
+  res.json({ ok: true, workouts: getWorkouts(athleteId) });
+});
+
+app.post('/api/workouts', requireAuth, requireRole('coach'), (req, res) => {
+  const body = req.body || {};
+  const athleteId = Number(body.athlete_user_id);
+  const ok = listAthletesForCoach(req.user.id).some(
+    (l) => l.athlete_user_id === athleteId && l.status === 'active'
+  );
+  if (!ok) return res.status(403).json({ ok: false, error: 'forbidden' });
+  const workoutId = body.id ? Number(body.id) : null;
+  if (workoutId) {
+    const existing = getWorkouts(athleteId, req.user.id).find((w) => w.id === workoutId);
+    if (!existing) return res.status(404).json({ ok: false, error: 'not_found' });
+  }
+  const patch = {
+    id: workoutId,
+    coach_user_id: req.user.id,
+    athlete_user_id: athleteId,
+    date: body.date,
+    type: body.type || 'running',
+    title: body.title || 'Тренировка',
+    desc: body.desc || '',
+    km: body.km ?? null,
+    pace: body.pace ?? null,
+    zone: body.zone ?? null,
+    dur: body.dur ?? null,
+  };
+  // result только если явно передали (иначе при правке плана отчёт сохраняется)
+  if (body.result !== undefined) patch.result = body.result;
+  if (!workoutId) {
+    patch.sent = !!body.sent;
+    patch.result = body.result ?? null;
+  } else if (body.sent !== undefined) {
+    patch.sent = !!body.sent;
+  }
+  const row = saveWorkout(patch);
+  res.json({ ok: true, workout: row });
+});
+
+app.delete('/api/workouts/:id', requireAuth, requireRole('coach'), (req, res) => {
+  const ok = deleteWorkout(Number(req.params.id), req.user.id);
+  if (!ok) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true });
+});
+
+app.post('/api/workouts/:id/report', requireAuth, requireRole('athlete'), (req, res) => {
+  const workouts = getWorkouts(req.user.id);
+  const w = workouts.find((x) => x.id === Number(req.params.id));
+  if (!w) return res.status(404).json({ ok: false, error: 'not_found' });
+  const status = req.body?.status;
+  if (!['completed', 'partial', 'missed'].includes(status)) {
+    return res.status(400).json({ ok: false, error: 'invalid_status' });
+  }
+  const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+  w.result = {
+    status,
+    rpe: num(req.body?.rpe),
+    km: num(req.body?.km),
+    dur: num(req.body?.dur),
+    hr_avg: num(req.body?.hr_avg),
+    hr_max: num(req.body?.hr_max),
+    fb: req.body?.fb || '',
+    at: new Date().toISOString(),
+  };
+  saveWorkout(w);
+  res.json({ ok: true, workout: w });
+});
+
+/** Chat */
+app.get('/api/chat', requireAuth, (req, res) => {
+  const coachId = Number(req.query.coachId);
+  const athleteId = Number(req.query.athleteId);
+  if (!coachId || !athleteId) return res.status(400).json({ ok: false, error: 'ids_required' });
+  if (req.session.role === 'coach' && req.user.id !== coachId) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+  if (req.session.role === 'athlete' && req.user.id !== athleteId) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+  const chat = getChat(coachId, athleteId);
+  res.json({ ok: true, messages: chat.messages });
+});
+
+app.post('/api/chat', requireAuth, async (req, res) => {
+  const coachId = Number(req.body?.coachId);
+  const athleteId = Number(req.body?.athleteId);
+  const text = String(req.body?.text || '').trim();
+  if (!coachId || !athleteId || !text) {
+    return res.status(400).json({ ok: false, error: 'invalid' });
+  }
+  const who = req.session.role === 'coach' ? 'coach' : 'athlete';
+  if (who === 'coach' && req.user.id !== coachId) return res.status(403).json({ ok: false, error: 'forbidden' });
+  if (who === 'athlete' && req.user.id !== athleteId) return res.status(403).json({ ok: false, error: 'forbidden' });
+  const chat = addChatMessage(coachId, athleteId, { who, html: escapeHtml(text), text });
+  const other = who === 'coach' ? findUserById(athleteId) : findUserById(coachId);
+  await notifyUser(
+    BOT_TOKEN,
+    other?.telegram_id,
+    `<b>TRENA</b>\n${escapeHtml(req.user.first_name || req.user.username)}: ${escapeHtml(text)}`
+  );
+  res.json({ ok: true, messages: chat.messages });
+});
+
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+const WEBHOOK_SECRET = (process.env.TELEGRAM_WEBHOOK_SECRET || process.env.SESSION_SECRET || '').slice(0, 64);
+
+/** Cloud: Telegram webhook */
+app.post('/api/telegram/webhook', async (req, res) => {
+  if (MODE === 'cloud' && WEBHOOK_SECRET) {
+    const hdr = req.headers['x-telegram-bot-api-secret-token'];
+    if (hdr !== WEBHOOK_SECRET) {
+      return res.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+  }
+  try {
+    await handleUpdate(req.body, {
+      token: BOT_TOKEN,
+      botUsername: BOT_USERNAME,
+      onLogin: (user) => console.log(`[login] ${user.username || user.telegram_id}`),
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[webhook]', e.message);
+    res.status(500).json({ ok: false });
+  }
+});
+
+// Static frontend
+const webDist = path.resolve(__dirname, '../../web/dist');
+const webPublic = path.resolve(__dirname, '../../web');
+if (fs.existsSync(webDist)) {
+  app.use(express.static(webDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(webDist, 'index.html'));
+  });
+} else {
+  app.use(express.static(webPublic));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(webPublic, 'index.html'));
+  });
+}
+
+app.listen(PORT, async () => {
+  console.log(`TRENA server http://127.0.0.1:${PORT}`);
+  console.log(`Bot @${BOT_USERNAME} · mode=${MODE}`);
+  const onLogin = (user) => console.log(`[login] ${user.username || user.telegram_id}`);
+  if (MODE === 'cloud' && PUBLIC_URL) {
+    try {
+      await setupWebhook({ token: BOT_TOKEN, publicUrl: PUBLIC_URL, secret: WEBHOOK_SECRET });
+    } catch (e) {
+      console.error('[bot] webhook failed, fallback to polling:', e.message);
+      startPolling({ token: BOT_TOKEN, botUsername: BOT_USERNAME, onLogin });
+    }
+  } else {
+    startPolling({ token: BOT_TOKEN, botUsername: BOT_USERNAME, onLogin });
+  }
+});

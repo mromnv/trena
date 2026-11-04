@@ -646,14 +646,19 @@ app.listen(PORT, '0.0.0.0', async () => {
     return;
   }
   const onLogin = (user) => console.log(`[login] ${user.username || user.telegram_id}`);
-  if (MODE === 'cloud' && PUBLIC_URL) {
+  // В cloud только webhook — polling конфликтует с локальным TRENA и другим инстансом
+  if (MODE === 'cloud') {
+    if (!PUBLIC_URL) {
+      console.error('[bot] PUBLIC_URL не задан — webhook не поставить. Задайте Variables → PUBLIC_URL');
+      return;
+    }
     try {
       await setupWebhook({ token: BOT_TOKEN, publicUrl: PUBLIC_URL, secret: WEBHOOK_SECRET });
+      console.log('[bot] webhook mode OK — локальный ЗАПУСК.bat закройте');
     } catch (e) {
-      console.error('[bot] webhook failed, fallback to polling:', e.message);
-      startPolling({ token: BOT_TOKEN, botUsername: BOT_USERNAME, onLogin });
+      console.error('[bot] webhook failed (без polling):', e.message);
     }
-  } else {
-    startPolling({ token: BOT_TOKEN, botUsername: BOT_USERNAME, onLogin });
+    return;
   }
+  startPolling({ token: BOT_TOKEN, botUsername: BOT_USERNAME, onLogin });
 });

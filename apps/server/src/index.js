@@ -636,8 +636,8 @@ if (fs.existsSync(webDist)) {
   });
 }
 
-app.listen(PORT, async () => {
-  console.log(`TRENA server http://127.0.0.1:${PORT}`);
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`TRENA server http://0.0.0.0:${PORT}`);
   console.log(`Bot @${BOT_USERNAME} · mode=${MODE}`);
   const onLogin = (user) => console.log(`[login] ${user.username || user.telegram_id}`);
   if (MODE === 'cloud' && PUBLIC_URL) {

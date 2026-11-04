@@ -52,7 +52,19 @@ const PORT = Number(process.env.PORT || 8765);
 const BOT_TOKEN = (process.env.BOT_TOKEN || '').trim();
 const BOT_USERNAME = (process.env.BOT_USERNAME || 'Trenatrena_bot').replace(/^@/, '');
 const MODE = process.env.MODE || 'local';
-const PUBLIC_URL = (process.env.PUBLIC_URL || '').replace(/\/$/, '');
+function resolvePublicUrl() {
+  const explicit = String(process.env.PUBLIC_URL || '').trim();
+  if (explicit) return explicit.replace(/\/$/, '');
+  // Railway сам даёт домен сервиса — webhook заработает без ручного PUBLIC_URL
+  const domain = String(process.env.RAILWAY_PUBLIC_DOMAIN || '').trim()
+    .replace(/^https?:\/\//, '')
+    .replace(/\/$/, '');
+  if (domain) return `https://${domain}`;
+  const staticUrl = String(process.env.RAILWAY_STATIC_URL || '').trim().replace(/\/$/, '');
+  if (staticUrl) return staticUrl;
+  return '';
+}
+const PUBLIC_URL = resolvePublicUrl();
 const COOKIE = 'trena_sid';
 const DEVICE_COOKIE = 'trena_device';
 const ADMIN_TELEGRAM_IDS = String(process.env.ADMIN_TELEGRAM_IDS || '')

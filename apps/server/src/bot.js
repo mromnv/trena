@@ -35,14 +35,25 @@ export async function sendMessage(token, chatId, text, extra = {}) {
 
 export async function setupWebhook({ token, publicUrl, secret }) {
   const url = `${String(publicUrl).replace(/\/$/, '')}/api/telegram/webhook`;
+  // сбросить старый webhook / polling-конфликт
+  try {
+    await tg(token, 'deleteWebhook', { drop_pending_updates: true });
+  } catch (e) {
+    console.warn('[bot] deleteWebhook:', e.message);
+  }
   const body = {
     url,
     allowed_updates: ['message', 'callback_query'],
-    drop_pending_updates: false,
+    drop_pending_updates: true,
   };
   if (secret) body.secret_token = secret;
   await tg(token, 'setWebhook', body);
+  const info = await tg(token, 'getWebhookInfo');
   console.log(`[bot] webhook set → ${url}`);
+  console.log(`[bot] webhook info url=${info.url || '(empty)'} pending=${info.pending_update_count}`);
+  if (info.last_error_message) {
+    console.error(`[bot] webhook last_error: ${info.last_error_message}`);
+  }
 }
 
 export function startPolling({ token, botUsername, onLogin }) {

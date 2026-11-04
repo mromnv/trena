@@ -598,11 +598,16 @@ function escapeHtml(s) {
     .replace(/>/g, '&gt;');
 }
 
-const WEBHOOK_SECRET = (process.env.TELEGRAM_WEBHOOK_SECRET || process.env.SESSION_SECRET || '').slice(0, 64);
+// Секрет webhook только если задали явно (иначе Telegram шлёт без него — проще для Railway)
+const WEBHOOK_SECRET = String(process.env.TELEGRAM_WEBHOOK_SECRET || '')
+  .trim()
+  .replace(/[^A-Za-z0-9_-]/g, '')
+  .slice(0, 256);
 
 /** Cloud: Telegram webhook */
 app.post('/api/telegram/webhook', async (req, res) => {
-  if (MODE === 'cloud' && WEBHOOK_SECRET) {
+  if (!BOT_TOKEN) return res.status(503).json({ ok: false, error: 'no_bot_token' });
+  if (WEBHOOK_SECRET) {
     const hdr = req.headers['x-telegram-bot-api-secret-token'];
     if (hdr !== WEBHOOK_SECRET) {
       return res.status(401).json({ ok: false, error: 'unauthorized' });
@@ -618,6 +623,23 @@ app.post('/api/telegram/webhook', async (req, res) => {
   } catch (e) {
     console.error('[webhook]', e.message);
     res.status(500).json({ ok: false });
+  }
+});
+
+/** Диагностика webhook (без секретов) */
+app.get('/api/telegram/webhook-info', async (_req, res) => {
+  if (!BOT_TOKEN) return res.status(503).json({ ok: false, error: 'no_bot_token' });
+  try {
+    const info = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo`).then((r) => r.json());
+    res.json({
+      ok: !!info.ok,
+      publicUrl: PUBLIC_URL || null,
+      mode: MODE,
+      expectedWebhook: PUBLIC_URL ? `${PUBLIC_URL}/api/telegram/webhook` : null,
+      telegram: info.result || info,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

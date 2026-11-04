@@ -1,0 +1,11 @@
+{
+  "name": "trena",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TRENA — тренерский кабинет с Telegram-аккаунтами",
+  "scripts": {
+    "install:all": "npm install --prefix apps/server",
+    "start": "npm run start --prefix apps/server",
+    "dev": "npm run start --prefix apps/server"
+  }
+}

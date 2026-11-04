@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>TRENA — тренерский кабинет</title>
+<link rel="icon" href="assets/trena-logo.jpg" type="image/jpeg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#0a0c10; --panel:#12161d; --text:#eef2f7; --muted:#8b97a8; --line:#243041; --soft:#1a212c;
+    --accent:#2ec4b6; --accent-ink:#04201c;
+    --run:#5b9cff; --swim:#38bdf8; --bike:#34d399; --strength:#fbbf24; --recovery:#a78bfa; --rest:#7d8999;
+    --ok:#4ade80; --partial:#fbbf24; --missed:#f87171; --sent:#5b9cff; --draft:#7d8999;
+    --tg:#2aabee; --bubble-in:#1c2532; --bubble-out:#1e4a6e; --chat-bg:#0b121a;
+    --shadow:0 12px 40px rgba(0,0,0,.55);
+    --logo-filter:none; --toast-bg:#eef2f7; --toast-fg:#0a0c10;
+    --aside-glow:radial-gradient(ellipse at 20% 0%, rgba(46,196,182,.12), transparent 55%);
+  }
+  [data-theme="light"] {
+    --bg:#eef1f5; --panel:#ffffff; --text:#121820; --muted:#627084; --line:#dce3ec; --soft:#f3f6f9;
+    --accent:#0f9d8a; --accent-ink:#ffffff;
+    --run:#2563eb; --swim:#0284c7; --bike:#059669; --strength:#d97706; --recovery:#7c3aed; --rest:#94a3b8;
+    --ok:#16a34a; --partial:#d97706; --missed:#dc2626; --sent:#2563eb; --draft:#8a94a3;
+    --tg:#229ed9; --bubble-in:#ffffff; --bubble-out:#d9fdd3; --chat-bg:#e8eef3;
+    --shadow:0 10px 32px rgba(15,25,40,.14);
+    --logo-filter:invert(1); --toast-bg:#121820; --toast-fg:#fff;
+    --aside-glow:radial-gradient(ellipse at 20% 0%, rgba(15,157,138,.08), transparent 55%);
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--text);
+    font:14px/1.45 Manrope,system-ui,sans-serif;
+    background-image:
+      radial-gradient(ellipse at 80% -10%, rgba(46,196,182,.08), transparent 40%),
+      radial-gradient(ellipse at 0% 100%, rgba(91,156,255,.06), transparent 35%);
+    background-attachment:fixed; min-height:100vh;
+  }
+  button { font:inherit; cursor:pointer; }
+  .app { display:grid; grid-template-columns:280px 1fr; min-height:100vh; }
+  aside {
+    background:var(--panel); border-right:1px solid var(--line); padding:18px 14px;
+    position:sticky; top:0; height:100vh; overflow:auto;
+    background-image:var(--aside-glow);
+  }
+  .brand { display:flex; align-items:center; gap:12px; margin:2px 4px 6px; }
+  .brand img {
+    width:56px; height:56px; border-radius:50%; object-fit:cover;
+    border:1px solid var(--line); background:#000; filter:var(--logo-filter);
+    flex:none;
+  }
+  .brand .meta { min-width:0; }
+  .brand .name {
+    font-weight:800; font-size:20px; letter-spacing:.08em; line-height:1.1;
+  }
+  .brand .tag {
+    font-size:10px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase;
+    margin-top:3px; line-height:1.3;
+  }
+  .theme-row { display:flex; align-items:center; gap:8px; margin:10px 4px 14px; }
+  .theme-btn {
+    flex:1; display:flex; align-items:center; justify-content:center; gap:8px;
+    border:1px solid var(--line); background:var(--soft); color:var(--muted);
+    border-radius:10px; padding:8px 10px; font-weight:600; font-size:12.5px;
+  }
+  .theme-btn:hover { border-color:var(--accent); color:var(--text); }
+  .theme-btn.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .bot { margin:0 6px 18px; font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); display:inline-block; }
+  .side-title { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 8px 8px; font-weight:700; }
+  .ath { display:flex; gap:10px; align-items:center; width:100%; text-align:left; background:none; border:1px solid transparent; border-radius:12px; padding:9px 8px; color:inherit; margin-bottom:2px; }
+  .ath:hover { background:var(--soft); }
+  .ath.active { background:var(--soft); border-color:var(--line); }
+  .av { width:38px; height:38px; border-radius:50%; display:grid; place-items:center; color:#fff; font-weight:700; flex:none; }
+  .ath .n { font-weight:600; } .ath .g { font-size:12px; color:var(--muted); }
+  .bar { height:4px; background:var(--line); border-radius:4px; margin-top:6px; overflow:hidden; }
+  .bar > span { display:block; height:100%; background:var(--accent); border-radius:4px; }
+  .ath > div { flex:1; min-width:0; }
+  main { padding:22px 26px 60px; min-width:0; }
+  .head { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-bottom:16px; }
+  .head h1 { margin:0; font-size:22px; } .head .sub { color:var(--muted); }
+  .grow { flex:1; }
+  .btn { border:1px solid var(--line); background:var(--panel); color:var(--text); padding:8px 14px; border-radius:10px; font-weight:600; }
+  .btn:hover { background:var(--soft); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .btn.primary:hover { filter:brightness(1.07); }
+  .btn.tg { background:var(--tg); border-color:var(--tg); color:#fff; }
+  .btn.danger { color:var(--missed); }
+  .btn[disabled] { opacity:.5; cursor:default; }
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--line); margin-bottom:18px; }
+  .tabs button { background:none; border:0; padding:9px 14px; color:var(--muted); border-bottom:2px solid transparent; margin-bottom:-1px; font-weight:600; }
+  .tabs button.on { color:var(--text); border-bottom-color:var(--accent); }
+  .toolbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:14px; }
+  .toolbar .wk { font-weight:700; font-size:16px; min-width:130px; text-align:center; }
+  .chip { font-size:12px; padding:3px 9px; border-radius:999px; background:var(--soft); color:var(--muted); border:1px solid var(--line); }
+  .week { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:10px; }
+  .day { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:8px; min-height:190px; display:flex; flex-direction:column; gap:8px; }
+  .day.today { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .day h4 { margin:0; font-size:12px; color:var(--muted); display:flex; justify-content:space-between; }
+  .day.today h4 { color:var(--accent); }
+  .wo { text-align:left; border:1px solid var(--line); border-left:4px solid var(--c,var(--rest)); background:var(--soft); border-radius:9px; padding:8px; color:inherit; width:100%; }
+  .wo:hover { border-color:var(--c); }
+  .wo.running { --c:var(--run); } .wo.swimming { --c:var(--swim); } .wo.cycling { --c:var(--bike); }
+  .wo.strength { --c:var(--strength); } .wo.recovery { --c:var(--recovery); } .wo.rest { --c:var(--rest); opacity:.75; }
+  .wo b { display:block; font-size:13px; } .wo small { color:var(--muted); display:block; margin:2px 0 5px; font-size:11.5px; }
+  .badge { display:inline-block; font-size:11px; font-weight:700; padding:1px 7px; border-radius:999px; color:#fff; background:var(--draft); }
+  .badge.completed { background:var(--ok); } .badge.partial { background:var(--partial); } .badge.missed { background:var(--missed); } .badge.sent { background:var(--sent); }
+  [data-theme="dark"] .badge { color:#0b0f15; }
+  .add { margin-top:auto; border:1px dashed var(--line); background:none; border-radius:9px; color:var(--muted); padding:5px; }
+  .add:hover { border-color:var(--accent); color:var(--accent); }
+  .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
+  .kpi, .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .kpi .v { font-size:26px; font-weight:800; margin-top:2px; } .kpi .l { color:var(--muted); font-size:12px; } .kpi .d { font-size:12px; color:var(--muted); }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; }
+  .card h3 { margin:0 0 10px; font-size:14px; }
+  svg.chart { width:100%; height:auto; display:block; }
+  svg text { fill:var(--muted); font-size:10px; font-family:inherit; }
+  .grid-l { stroke:var(--line); stroke-width:1; }
+  .b-plan { fill:var(--accent); opacity:.28; } .b-act { fill:var(--accent); }
+  .ln { fill:none; stroke:var(--accent); stroke-width:2.4; } .pt { fill:var(--panel); stroke:var(--accent); stroke-width:2; }
+  .legend { display:flex; gap:14px; font-size:12px; color:var(--muted); margin-top:6px; }
+  .legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+  .heat { display:grid; grid-template-columns:64px repeat(7,1fr); gap:5px; align-items:center; font-size:11px; color:var(--muted); }
+  .cell { height:22px; border-radius:6px; background:var(--soft); border:1px solid var(--line); }
+  .cell.completed { background:var(--ok); border-color:var(--ok); } .cell.partial { background:var(--partial); border-color:var(--partial); }
+  .cell.missed { background:var(--missed); border-color:var(--missed); } .cell.sent { background:none; border:1px dashed var(--sent); }
+  .cell.rest { background:var(--soft); opacity:.55; } .cell.none { background:none; border-style:dashed; opacity:.4; }
+  .rep { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .rep:last-child { border:0; }
+  .rep .meta { color:var(--muted); font-size:12px; }
+  .rep q { display:block; margin-top:6px; font-style:normal; background:var(--soft); border-radius:9px; padding:7px 10px; }
+  .rpe { font-weight:800; min-width:44px; text-align:center; border-radius:10px; background:var(--soft); padding:6px 0; height:fit-content; }
+  .rpe small { display:block; font-weight:500; color:var(--muted); font-size:10px; }
+  #modal { position:fixed; inset:0; background:rgba(8,12,18,.55); display:none; align-items:center; justify-content:center; padding:16px; z-index:20; }
+  #modal.open { display:flex; }
+  .sheet { background:var(--panel); border-radius:16px; width:min(520px,100%); max-height:92vh; overflow:auto; box-shadow:var(--shadow); }
+  .sheet .hd { display:flex; align-items:center; padding:14px 18px; border-bottom:1px solid var(--line); font-weight:700; gap:10px; }
+  .sheet .bd { padding:14px 18px; } .sheet .ft { padding:12px 18px; border-top:1px solid var(--line); display:flex; gap:8px; flex-wrap:wrap; }
+  .x { margin-left:auto; background:none; border:0; font-size:20px; color:var(--muted); }
+  label { display:block; font-size:12px; font-weight:600; color:var(--muted); margin:10px 0 4px; }
+  input, select, textarea { width:100%; font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:9px; padding:8px 10px; }
+  .f2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; } .f3 { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .resbox { margin-top:12px; background:var(--soft); border-radius:10px; padding:10px 12px; font-size:13px; }
+  .tgsheet { width:min(440px,100%); }
+  .chat { background:var(--chat-bg); padding:12px; height:min(440px,52vh); overflow:auto; display:flex; flex-direction:column; gap:8px; }
+  .msg { max-width:86%; padding:7px 10px; border-radius:12px; background:var(--bubble-in); white-space:pre-line; box-shadow:0 1px 1px rgba(0,0,0,.08); font-size:13.5px; }
+  .msg.coach, .msg.bot { align-self:flex-start; } .msg.athlete { align-self:flex-end; background:var(--bubble-out); }
+  .msg .t { display:block; text-align:right; font-size:10.5px; color:var(--muted); margin-top:2px; }
+  .kb { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .kb span { flex:1; text-align:center; background:rgba(43,155,216,.16); color:var(--tg); border-radius:8px; padding:5px 8px; font-size:12.5px; font-weight:600; white-space:nowrap; }
+  .sendrow { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--line); }
+  #toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(20px); background:var(--toast-bg); color:var(--toast-fg); padding:10px 16px; border-radius:10px; opacity:0; transition:.25s; pointer-events:none; z-index:40; max-width:90vw; font-weight:600; }
+  #toast.show { opacity:1; transform:translateX(-50%); }
+  .banner { font-size:12px; color:var(--muted); margin:0 0 14px; }
+  .prof { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }
+  .prof .wide { grid-column:1/-1; }
+  .hint { color:var(--muted); font-size:12px; margin:-4px 0 10px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .tgl { border:1px solid var(--line); background:var(--soft); color:var(--muted); border-radius:999px; padding:5px 12px; font-size:13px; }
+  .tgl:hover { border-color:var(--accent); }
+  .tgl.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:600; }
+  .row-item { display:grid; gap:8px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); }
+  .days { display:flex; gap:4px; }
+  .days button { width:30px; height:30px; border-radius:8px; border:1px solid var(--line); background:var(--soft); color:var(--muted); font-size:12px; padding:0; }
+  .days button.on { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); font-weight:700; }
+  table.pbt { width:100%; border-collapse:collapse; }
+  .pbt th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:0 6px 6px; }
+  .pbt td { padding:4px 6px; } .pbt .gap { font-size:12.5px; color:var(--muted); white-space:nowrap; }
+  .vd { margin-top:12px; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--soft); }
+  .vd-top { display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .vdnum { font-size:34px; font-weight:800; color:var(--accent); line-height:1; }
+  table.vdt { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:6px; }
+  .vdt th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:4px 8px; }
+  .vdt td { padding:6px 8px; border-top:1px solid var(--line); } .vdt td.m { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+  .vdgrid { display:grid; grid-template-columns:1.35fr 1fr; gap:16px; }
+  .vdform { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:760px) { .vdgrid { grid-template-columns:1fr; } }
+  .ex { border:1px dashed var(--line); border-radius:8px; padding:4px 7px; font-size:11.5px; color:var(--muted); }
+  @media (max-width:1100px) { .prof { grid-template-columns:1fr; } }
+  @media (max-width:760px) { .row-item { grid-template-columns:1fr !important; } }
+  @media (max-width:1100px) { .week { grid-template-columns:repeat(2,minmax(0,1fr)); } .kpis { grid-template-columns:repeat(2,1fr); } .two { grid-template-columns:1fr; } }
+  @media (max-width:760px) {
+    .app { grid-template-columns:1fr; }
+    aside {
+      position:static; height:auto; display:grid; grid-template-columns:auto 1fr;
+      gap:8px; overflow:visible; padding:12px; border-right:0; border-bottom:1px solid var(--line);
+    }
+    aside .bot, aside .side-title { display:none; }
+    aside .brand { margin:0; } aside .brand img { width:44px; height:44px; }
+    aside .theme-row { margin:0; grid-column:2; }
+    #side { grid-column:1/-1; display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; }
+    .ath { width:auto; min-width:190px; } main { padding:16px 12px 50px; }
+    .week { grid-template-columns:1fr; }
+  }
+</style>
+<script>
+  (function () {
+    const saved = localStorage.getItem('trena-theme');
+    const theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+  })();
+</script>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <div class="brand">
+      <img src="assets/trena-logo.jpg" alt="TRENA" width="56" height="56">
+      <div class="meta">
+        <div class="name">TRENA</div>
+        <div class="tag">Тренируйся · Развивайся · Достигай</div>
+      </div>
+    </div>
+    <div class="theme-row">
+      <button type="button" class="theme-btn" id="theme-dark" onclick="setTheme('dark')" title="Тёмная тема">Тёмная</button>
+      <button type="button" class="theme-btn" id="theme-light" onclick="setTheme('light')" title="Светлая тема">Светлая</button>
+    </div>
+    <div class="bot" id="bot-status"><span class="dot" style="background:var(--draft)"></span> Telegram: проверка…</div>
+    <div class="side-title">Мои атлеты</div>
+    <div id="side"></div>
+  </aside>
+  <main>
+    <div class="head" id="head"></div>
+    <div class="tabs" id="tabs"></div>
+    <div id="view"></div>
+    <p class="banner" id="app-banner">Для презентации запускайте <b>ЗАПУСК.bat</b> — сервер откроет кабинет сам. Без токена Telegram работает в демо-режиме.</p>
+  </main>
+</div>
+<div id="modal"></div>
+<div id="toast"></div>
+
+<script>
+/* ---------------- утилиты ---------------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const ds = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const pd = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const addD = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const monday = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay()+6)%7); return x; };
+const DAYS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+const MON = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const fmt = d => `${d.getDate()} ${MON[d.getMonth()]}`;
+const TODAY = new Date(); const TODAY_S = ds(TODAY); const CUR_MON = monday(TODAY);
+const weekKey = s => ds(monday(pd(s)));
+const sum = a => a.reduce((x, y) => x + y, 0);
+const hhmm = () => { const d = new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const pick = (arr, r) => arr[Math.floor(r() * arr.length)];
+function paceShift(p, sec) { const [m, s] = p.split(':').map(Number); const t = m*60 + s - sec; return `${Math.floor(t/60)}:${pad(t%60)}`; }
+
+const TYPES = {
+  running:  { label:'Бег', icon:'🏃' },
+  swimming: { label:'Плавание', icon:'🏊' },
+  cycling:  { label:'Вело', icon:'🚴' },
+  strength: { label:'ОФП', icon:'🏋️' },
+  recovery: { label:'Восстановление', icon:'🧘' },
+  rest:     { label:'Отдых', icon:'😴' },
+};
+const ST = { completed:'Выполнено', partial:'Частично', missed:'Пропущено', sent:'Отправлено', draft:'Черновик' };
+const FB = {
+  completed:['Всё по плану, ноги лёгкие','Тяжело на последних повторах, но справился','Отличная погода, бежалось в удовольствие','Пульс держался в зоне, самочувствие хорошее'],
+  partial:['Закололо в боку, сократил объём','Не хватило времени, сделал часть','Устал после работы, остановился раньше'],
+  missed:['Заболел, температура','Командировка, не получилось','Сильная усталость, решил отдохнуть'],
+};
+
+/* ---------------- данные ---------------- */
+let NEXT_ID = 1;
+const ATH = [
+  { id:1, name:'Мария Смирнова', base:32, pace:'5:40', tg:'@maria_run', chatId:'', color:'#e07a5f', adh:.92 },
+  { id:2, name:'Алексей Беговой', base:55, pace:'5:05', tg:'@alex_runner', chatId:'', color:'#3d85c6', adh:.85 },
+  { id:3, name:'Ольга Крылова', base:28, pace:'5:20', tg:'@olga_k', chatId:'', color:'#6a994e', adh:.96 },
+  { id:4, name:'Дмитрий Орлов', base:15, pace:'6:30', tg:'@dima_orlov', chatId:'', color:'#9b5de5', adh:.7 },
+];
+(function loadTgLinks() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('trena-tg-links') || '{}');
+    ATH.forEach(a => {
+      if (saved[a.id]?.chatId) a.chatId = String(saved[a.id].chatId);
+      if (saved[a.id]?.tg) a.tg = saved[a.id].tg;
+    });
+  } catch (_) {}
+})();
+function persistTgLinks() {
+  const map = {};
+  ATH.forEach(a => { map[a.id] = { chatId: a.chatId || '', tg: a.tg || '' }; });
+  localStorage.setItem('trena-tg-links', JSON.stringify(map));
+}
+
+/* профили атлетов (стартовые данные) */
+const dOff = n => ds(addD(TODAY, n));
+const ex = (name, days, note) => ({ id:NEXT_ID++, name, days, note });
+const st = (prio, name, off, dist, goal) => ({ id:NEXT_ID++, prio, name, date:dOff(off), dist, goal });
+const pbs = (a, b, c, d) => ({ '5 км':{ now:a[0], goal:a[1] }, '10 км':{ now:b[0], goal:b[1] }, '21,1 км':{ now:c[0], goal:c[1] }, '42,2 км':{ now:d[0], goal:d[1] } });
+const PROFILES = {
+  1: { base:['Стадион','Парк / лес','Площадка для ОФП','Резинки / эспандеры','Бассейн'],
+       tools:['Часы Garmin','МФР-ролл','Перкуссионный массажёр'],
+       extras:[ex('Плавание 30 мин', [0, 4], 'Бассейн рядом с офисом, лёгкая работа на восстановление'), ex('Йога', [6], 'Онлайн, 40 минут')],
+       starts:[st('A','Осенний полумарафон', 49, '21,1 км', '1:45:00'), st('B','Контрольный 10 км', 21, '10 км', '48:30')],
+       pbs:pbs(['23:40','22:30'], ['50:10','47:30'], ['1:53:20','1:45:00'], ['','']),
+       why:'Бегаю, чтобы держать себя в форме и снимать стресс после работы. Хочу пробежать первый полумарафон быстрее 1:45.',
+       values:['Чёткие цифры и план','Без перегрузок','Бег в удовольствие'],
+       notes:'Важно учитывать рабочие дедлайны. По вторникам тренируется утром.' },
+  2: { base:['Стадион','Горы / трейлы','Тренажёрный зал','Беговая дорожка'],
+       tools:['Часы Garmin','Нагрудный пульсометр','МФР-ролл','Перкуссионный массажёр','Мячи для МФР'],
+       extras:[ex('Силовая в зале', [2], 'Базовые движения со штангой, 60 минут'), ex('Велотренажёр 45 мин', [0], 'Лёгкая кросс-тренировка, пульс до зоны 2')],
+       starts:[st('A','Осенний марафон', 84, '42,2 км', '3:30:00'), st('B','Полумарафон-подводка', 42, '21,1 км', '1:38:00')],
+       pbs:pbs(['20:40','19:45'], ['43:10','41:30'], ['1:36:40','1:33:00'], ['3:41:15','3:30:00']),
+       why:'Хочу бежать быстрее и дольше. Марафон для меня вызов и способ узнать свои пределы.',
+       values:['Соревновательность','Быстрый прогресс','Чёткие цифры и план'],
+       notes:'Любит горные выходные: раз в месяц длительная на трейле.' },
+  3: { base:['Стадион','Парк / лес','Бассейн','Резинки / эспандеры'],
+       tools:['Часы Garmin','МФР-ролл'],
+       extras:[ex('Плавание 40 мин', [0, 4], 'Бассейн по абонементу'), ex('Растяжка', [6], '20 минут перед сном')],
+       starts:[st('A','Городской забег 10 км', 35, '10 км', '50:00'), st('C','Парковый старт 5 км', 14, '5 км', '23:30')],
+       pbs:pbs(['24:50','23:30'], ['52:40','50:00'], ['','1:52:00'], ['','']),
+       why:'Бегаю для здоровья и энергии. Хочу показать результат на 10 км и вдохновить подруг присоединиться.',
+       values:['Здоровье и долголетие','Общение / беговая группа','Бег в удовольствие'],
+       notes:'' },
+  4: { base:['Парк / лес','Площадка для ОФП'],
+       tools:['Часы Garmin'],
+       extras:[ex('Прогулка 60 мин', [4], 'Быстрым шагом, без бега')],
+       starts:[st('A','Первый забег 5 км', 28, '5 км', '30:00')],
+       pbs:pbs(['33:20','30:00'], ['',''], ['',''], ['','']),
+       why:'Хочу сбросить вес и перестать задыхаться на лестнице. Бег для меня способ взять себя в руки.',
+       values:['Здоровье и долголетие','Без перегрузок','Гибкий график'],
+       notes:'Работает посменно, график плавающий. Опасается травм.' },
+};
+ATH.forEach(a => { a.profile = PROFILES[a.id]; });
+
+function genResult(a, w, rnd) {
+  const p = rnd();
+  const kind = w.title.startsWith('Интервалы') ? 'int' : w.title.startsWith('Длительный') ? 'long' : w.type === 'running' ? 'easy' : w.type;
+  const st = p < a.adh * .82 ? 'completed' : p < Math.min(.97, a.adh + .04) ? 'partial' : 'missed';
+  const base = { int:7, long:6, easy:4, strength:5, recovery:2 }[kind] || 4;
+  const rpe = st === 'missed' ? null : Math.max(1, Math.min(10, base + Math.round(rnd()*2 - 1) + (st === 'partial' ? 1 : 0)));
+  let km = null;
+  if ((w.type === 'running' || w.type === 'cycling' || w.type === 'swimming') && st !== 'missed' && w.km != null)
+    km = Math.round(w.km * (st === 'completed' ? .96 + rnd()*.1 : .5 + rnd()*.25) * 10) / 10;
+  return { status:st, rpe, km, fb:pick(FB[st], rnd), at:w.date };
+}
+
+function genWorkouts(a) {
+  const r = rng(a.id * 977), list = [];
+  for (let w = -7; w <= 1; w++) {
+    const i = w + 7, f = (1 + .035*i) * (i === 3 ? .78 : 1), mon = addD(CUR_MON, w*7);
+    const km = x => Math.max(3, Math.round(a.base * x * f));
+    const reps = Math.max(4, Math.round(a.base / 6));
+    const swimM = Math.max(800, Math.round(a.base * 35));
+    const bikeKm = Math.max(20, Math.round(a.base * 1.8));
+    const key = (a.id + i) % 3;
+    const mid = key === 0
+      ? { type:'swimming', title:`Плавание ${swimM} м`, desc:'Техника + спокойные серии, акцент на восстановление', km:swimM / 1000, dur:45, zone:2 }
+      : key === 1
+        ? { type:'cycling', title:`Вело ${bikeKm} км`, desc:'Ровный темп, зона 2, каденс 85–95', km:bikeKm, dur:Math.round(bikeKm * 2.2), zone:2 }
+        : { type:'running', title:`Лёгкий бег ${km(.18)} км`, desc:'Разговорный темп, без ускорений', km:km(.18), pace:a.pace, zone:2 };
+    const tpl = [
+      { type:'recovery', title:'Мобилити и растяжка', desc:'20 минут лёгкой мобильности и ролл', dur:20 },
+      { type:'running', title:`Интервалы ${reps}×800 м`, desc:`Разминка 2 км, ${reps}×800 м через 2 мин трусцы, заминка 2 км`, km:km(.17), pace:paceShift(a.pace, 40), zone:4 },
+      { type:'strength', title:'ОФП: ноги и кор', desc:'Приседания, выпады, планка, ягодичный мост. 3 круга', dur:40 },
+      mid,
+      { type:'rest', title:'День отдыха', desc:'' },
+      { type:'running', title:`Длительный бег ${km(.3)} км`, desc:'Равномерно, последние 2 км чуть быстрее', km:km(.3), pace:a.pace, zone:2 },
+      { type:'rest', title:'День отдыха', desc:'' },
+    ];
+    tpl.forEach((t, k) => {
+      const date = ds(addD(mon, k));
+      const wo = { id:NEXT_ID++, date, type:t.type, title:t.title, desc:t.desc, km:t.km ?? null, pace:t.pace ?? null, zone:t.zone ?? null, dur:t.dur ?? null, sent:w <= 0, result:null };
+      if (t.type !== 'rest' && date < TODAY_S) wo.result = genResult(a, wo, r);
+      list.push(wo);
+    });
+  }
+  return list;
+}
+ATH.forEach(a => {
+  a.workouts = genWorkouts(a);
+  a.chat = [
+    { who:'coach', html:'<b>Привет! План на текущую неделю уже в TRENA.</b>\nОтчёт отправляй кнопками под тренировкой.', time:'09:00' },
+    { who:'athlete', html:'Принято, спасибо 👍', time:'09:12' },
+  ];
+});
+
+const state = { aid:1, tab:'plan', weekOff:0 };
+const cur = () => ATH.find(a => a.id === state.aid);
+
+/* ---------------- статистика ---------------- */
+const dueOf = a => a.workouts.filter(w => w.type !== 'rest' && w.result);
+function weekStats(a, monS) {
+  const ws = a.workouts.filter(w => weekKey(w.date) === monS && w.type !== 'rest');
+  const res = ws.filter(w => w.result);
+  const volumeTypes = new Set(['running', 'cycling', 'swimming']);
+  const planned = Math.round(sum(ws.filter(w => volumeTypes.has(w.type)).map(w => w.km || 0)) * 10) / 10;
+  const actual = Math.round(sum(res.map(w => w.result.km || 0)) * 10) / 10;
+  const score = res.length ? sum(res.map(w => w.result.status === 'completed' ? 1 : w.result.status === 'partial' ? .5 : 0)) / res.length : null;
+  const rp = res.filter(w => w.result.rpe != null).map(w => w.result.rpe);
+  return { planned, actual, completion:score, rpe:rp.length ? sum(rp) / rp.length : null };
+}
+const lastWeeks = n => [...Array(n)].map((_, i) => ds(addD(CUR_MON, (i - (n - 1)) * 7)));
+function pct4(a) {
+  const s = lastWeeks(4).map(m => weekStats(a, m)).filter(x => x.completion != null);
+  return s.length ? Math.round(sum(s.map(x => x.completion)) / s.length * 100) : 0;
+}
+function streak(a) {
+  const done = dueOf(a).sort((x, y) => y.date.localeCompare(x.date));
+  let n = 0; for (const w of done) { if (w.result.status === 'missed') break; n++; } return n;
+}
+
+/* ---------------- тема ---------------- */
+function setTheme(theme) {
+  const next = theme === 'light' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('trena-theme', next);
+  syncThemeButtons();
+}
+function syncThemeButtons() {
+  const t = document.documentElement.getAttribute('data-theme') || 'dark';
+  const dark = $('#theme-dark'), light = $('#theme-light');
+  if (dark) dark.classList.toggle('on', t === 'dark');
+  if (light) light.classList.toggle('on', t === 'light');
+}
+
+/* ---------------- UI-инфраструктура ---------------- */
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2600); }
+function openModal(html) { $('#modal').innerHTML = html; $('#modal').classList.add('open'); }
+function closeModal() { $('#modal').classList.remove('open'); $('#modal').innerHTML = ''; }
+$('#modal').addEventListener('mousedown', e => { if (e.target.id === 'modal') closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+const initials = n => n.split(' ').map(x => x[0]).join('');
+const badgeOf = w => w.result ? w.result.status : (w.sent ? 'sent' : 'draft');
+const metricsOf = w => {
+  if (w.type === 'running') return `${w.km ?? '—'} км · ${w.pace ?? '—'}/км · зона ${w.zone ?? '—'}`;
+  if (w.type === 'swimming') return `${w.km != null ? Math.round(w.km * 1000) : '—'} м · ${w.dur ? w.dur + ' мин' : 'зона ' + (w.zone ?? '—')}`;
+  if (w.type === 'cycling') return `${w.km ?? '—'} км · ${w.dur ? w.dur + ' мин · ' : ''}зона ${w.zone ?? '—'}`;
+  return w.dur ? `${w.dur} мин` : '';
+};
+
+function setAthlete(id) { state.aid = id; state.weekOff = 0; render(); }
+function setTab(t) { state.tab = t; render(); }
+function shiftWeek(n) { state.weekOff += n; render(); }
+function render() { renderSide(); renderHead(); renderTabs(); renderView(); }
+
+function renderSide() {
+  $('#side').innerHTML = ATH.map(a => `
+    <button class="ath ${a.id === state.aid ? 'active' : ''}" onclick="setAthlete(${a.id})">
+      <span class="av" style="background:${a.color}">${esc(initials(a.name))}</span>
+      <div><div class="n">${esc(a.name)}</div><div class="g">${esc(goalOf(a))}</div>
+        <div class="bar"><span style="width:${pct4(a)}%"></span></div></div>
+    </button>`).join('');
+}
+function renderHead() {
+  const a = cur();
+  $('#head').innerHTML = `
+    <span class="av" style="background:${a.color};width:48px;height:48px;font-size:17px">${esc(initials(a.name))}</span>
+    <div><h1>${esc(a.name)}</h1><div class="sub">${esc(goalOf(a))} · Telegram ${esc(a.tg)}</div></div>
+    <span class="grow"></span>
+    <button class="btn tg" onclick="openChat()">💬 Чат в Telegram</button>`;
+}
+function renderTabs() {
+  $('#tabs').innerHTML = [['plan','План'],['progress','Прогресс'],['reports','Отчёты атлета'],['profile','Профиль атлета']]
+    .map(([k, l]) => `<button class="${state.tab === k ? 'on' : ''}" onclick="setTab('${k}')">${l}</button>`).join('');
+}
+function renderView() { const a = cur(); $('#view').innerHTML = state.tab === 'plan' ? viewPlan(a) : state.tab === 'progress' ? viewProgress(a) : state.tab === 'reports' ? viewReports(a) : viewProfile(a); }
+
+/* ---------------- вкладка «План» ---------------- */
+function viewPlan(a) {
+  const mon = addD(CUR_MON, state.weekOff * 7), monS = ds(mon);
+  const ws = a.workouts.filter(w => weekKey(w.date) === monS);
+  const km = Math.round(sum(ws.filter(w => w.type === 'running' || w.type === 'cycling' || w.type === 'swimming').map(w => w.km || 0)));
+  const drafts = ws.filter(w => !w.sent && !w.result && w.type !== 'rest');
+  const days = [...Array(7)].map((_, i) => {
+    const d = addD(mon, i), s = ds(d);
+    const items = ws.filter(w => w.date === s).map(w => `
+      <button class="wo ${w.type}" onclick="openEditor(${w.id})">
+        <b>${TYPES[w.type].icon} ${esc(w.title)}</b><small>${esc(metricsOf(w))}</small>
+        ${w.type === 'rest' ? '' : `<span class="badge ${badgeOf(w)}">${ST[badgeOf(w)]}${w.result?.rpe ? ' · RPE ' + w.result.rpe : ''}</span>`}
+      </button>`).join('');
+    return `<div class="day ${s === TODAY_S ? 'today' : ''}"><h4><span>${DAYS[i]}</span><span>${fmt(d)}</span></h4>${items}${extrasOf(a, i)}
+      <button class="add" onclick="openEditor(null,'${s}')">+ тренировка</button></div>`;
+  }).join('');
+  return `
+    <div class="toolbar">
+      <button class="btn" onclick="shiftWeek(-1)">←</button>
+      <div class="wk">${fmt(mon)} – ${fmt(addD(mon, 6))}${state.weekOff === 0 ? '<br><span class="chip">текущая неделя</span>' : ''}</div>
+      <button class="btn" onclick="shiftWeek(1)">→</button>
+      <span class="chip">Объём плана: ${km} км</span>
+      <span class="chip">Черновиков: ${drafts.length}</span>
+      ${startChip(a)}
+      ${a.vdot ? `<span class="chip">VDOT ${vdFmt(a.vdot)}</span>` : ''}
+      <span class="grow"></span>
+      <button class="btn" onclick="openVdot()">⚡ VDOT-калькулятор</button>
+      <button class="btn" onclick="copyPrevWeek()">Скопировать прошлую неделю</button>
+      <button class="btn primary" ${drafts.length ? '' : 'disabled'} onclick="sendWeek()">Отправить в Telegram${drafts.length ? ' (' + drafts.length + ')' : ''}</button>
+    </div>
+    <div class="week">${days}</div>`;
+}
+
+function copyPrevWeek() {
+  const a = cur(), mon = addD(CUR_MON, state.weekOff * 7), prev = ds(addD(mon, -7));
+  let n = 0;
+  a.workouts.filter(w => weekKey(w.date) === prev).forEach(w => {
+    const nd = ds(addD(pd(w.date), 7));
+    if (!a.workouts.some(x => x.date === nd)) { a.workouts.push({ ...w, id:NEXT_ID++, date:nd, sent:false, result:null }); n++; }
+  });
+  toast(n ? `Скопировано тренировок: ${n}` : 'Нечего копировать: дни уже заняты');
+  render();
+}
+
+/* ---------------- редактор тренировки ---------------- */
+function openEditor(id, date) {
+  const a = cur();
+  const w = id ? a.workouts.find(x => x.id === id) : { id:null, date, type:'running', title:'', desc:'', km:10, pace:a.pace, zone:2, dur:40, result:null, sent:false };
+  const r = w.result;
+  openModal(`
+  <div class="sheet">
+    <div class="hd">${id ? 'Редактирование тренировки' : 'Новая тренировка'}<button class="x" onclick="closeModal()">×</button></div>
+    <div class="bd">
+      <div class="f2">
+        <div><label>Тип</label><select id="e-type" onchange="toggleFields()">
+          ${Object.entries(TYPES).map(([k, v]) => `<option value="${k}" ${w.type === k ? 'selected' : ''}>${v.icon} ${v.label}</option>`).join('')}</select></div>
+        <div><label>Дата</label><input id="e-date" type="date" value="${w.date}"></div>
+      </div>
+      <label>Название</label><input id="e-title" value="${esc(w.title)}" placeholder="Например: Лёгкий бег 8 км">
+      <label>Описание</label><textarea id="e-desc" rows="3" placeholder="Что делать, на что обратить внимание">${esc(w.desc)}</textarea>
+      <div id="f-run" class="f3">
+        <div><label>Дистанция, км</label><input id="e-km" type="number" min="0" step="0.5" value="${w.km ?? ''}"></div>
+        <div><label>Темп, мин/км</label><input id="e-pace" value="${esc(w.pace ?? '')}" placeholder="5:30"></div>
+        <div><label>Пульсовая зона</label><select id="e-zone">${[1,2,3,4,5].map(z => `<option ${w.zone === z ? 'selected' : ''}>${z}</option>`).join('')}</select></div>
+      </div>
+      <div id="f-swim" class="f2">
+        <div><label>Дистанция, м</label><input id="e-swim-m" type="number" min="0" step="50" value="${w.type === 'swimming' && w.km != null ? Math.round(w.km * 1000) : (w.meters ?? '')}"></div>
+        <div><label>Длительность, мин</label><input id="e-swim-dur" type="number" min="0" step="5" value="${w.dur ?? ''}"></div>
+      </div>
+      <div id="f-bike" class="f3">
+        <div><label>Дистанция, км</label><input id="e-bike-km" type="number" min="0" step="1" value="${w.type === 'cycling' ? (w.km ?? '') : ''}"></div>
+        <div><label>Длительность, мин</label><input id="e-bike-dur" type="number" min="0" step="5" value="${w.dur ?? ''}"></div>
+        <div><label>Пульсовая зона</label><select id="e-bike-zone">${[1,2,3,4,5].map(z => `<option ${w.zone === z ? 'selected' : ''}>${z}</option>`).join('')}</select></div>
+      </div>
+      <div id="f-vdot">${vdotPanelHtml(a)}</div>
+      <div id="f-dur"><label>Длительность, мин</label><input id="e-dur" type="number" min="0" step="5" value="${w.dur ?? ''}"></div>
+      ${r ? `<div class="resbox"><b>Отчёт атлета:</b> <span class="badge ${r.status}">${ST[r.status]}</span>
+        ${r.rpe ? ` · RPE ${r.rpe}` : ''}${r.km != null ? ` · факт ${r.km} км` : ''}${r.fb ? `<br>«${esc(r.fb)}»` : ''}</div>` : ''}
+    </div>
+    <div class="ft">
+      <button class="btn primary" onclick="saveWorkout(${id || 'null'}, '${w.date}', false)">Сохранить</button>
+      ${r ? '' : `<button class="btn tg" onclick="saveWorkout(${id || 'null'}, '${w.date}', true)">Сохранить и отправить</button>`}
+      <span class="grow"></span>
+      ${id ? `<button class="btn danger" onclick="deleteWorkout(${id})">Удалить</button>` : ''}
+    </div>
+  </div>`);
+  toggleFields();
+}
+function toggleFields() {
+  const t = $('#e-type').value;
+  $('#f-run').style.display = t === 'running' ? '' : 'none';
+  $('#f-swim').style.display = t === 'swimming' ? '' : 'none';
+  $('#f-bike').style.display = t === 'cycling' ? '' : 'none';
+  $('#f-vdot').style.display = t === 'running' ? '' : 'none';
+  $('#f-dur').style.display = (t === 'strength' || t === 'recovery') ? '' : 'none';
+}
+function saveWorkout(id, oldDate, sendNow) {
+  const a = cur(), t = $('#e-type').value;
+  const title = $('#e-title').value.trim() || (t === 'rest' ? 'День отдыха' : '');
+  if (!title) { toast('Укажите название тренировки'); return; }
+  const date = $('#e-date').value || oldDate;
+  const num = v => v === '' ? null : Number(v);
+  let km = null, pace = null, zone = null, dur = null;
+  if (t === 'running') {
+    km = num($('#e-km').value); pace = $('#e-pace').value.trim() || null; zone = Number($('#e-zone').value); 
+  } else if (t === 'swimming') {
+    const meters = num($('#e-swim-m').value); km = meters == null ? null : meters / 1000; dur = num($('#e-swim-dur').value);
+  } else if (t === 'cycling') {
+    km = num($('#e-bike-km').value); dur = num($('#e-bike-dur').value); zone = Number($('#e-bike-zone').value);
+  } else if (t === 'strength' || t === 'recovery') {
+    dur = num($('#e-dur').value);
+  }
+  const data = { date, type:t, title, desc:$('#e-desc').value.trim(), km, pace, zone, dur };
+  let w;
+  if (id) { w = a.workouts.find(x => x.id === id); Object.assign(w, data); if (!w.result) w.sent = false; }
+  else { w = { id:NEXT_ID++, sent:false, result:null, ...data }; a.workouts.push(w); }
+  state.weekOff = Math.round((monday(pd(date)) - CUR_MON) / 604800000);
+  closeModal();
+  if (sendNow && t !== 'rest') { dispatch(a, [w], `Тренировка · ${fmt(pd(date))}`, true); }
+  else toast(id ? 'Сохранено. Изменения не отправлены атлету' : 'Тренировка добавлена как черновик');
+  render();
+}
+function deleteWorkout(id) { const a = cur(); a.workouts = a.workouts.filter(w => w.id !== id); closeModal(); toast('Тренировка удалена'); render(); }
+
+/* ---------------- Telegram (реальный бот + демо) ---------------- */
+const TG = { online:false, demo:true, bot:null, chats:[], since:0, pollTimer:null, seenInbox:new Set() };
+const apiUrl = path => path; // тот же origin при запуске через ЗАПУСК.bat
+
+async function api(path, opts) {
+  const res = await fetch(apiUrl(path), {
+    headers: { 'Content-Type': 'application/json', ...(opts?.headers || {}) },
+    ...opts,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) {}
+  if (!res.ok) {
+    const err = new Error(data?.error || ('HTTP ' + res.status));
+    err.data = data; err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+function setBotStatus(html) {
+  const el = $('#bot-status');
+  if (el) el.innerHTML = html;
+}
+
+async function refreshBotStatus() {
+  try {
+    const s = await api('/api/status');
+    TG.online = true; TG.demo = !!s.demo; TG.bot = s.bot || null;
+    if (TG.demo) {
+      setBotStatus(`<span class="dot" style="background:var(--partial)"></span> Демо · Telegram не подключён`);
+      $('#app-banner').innerHTML = 'Демо-режим: чат имитируется. Для реальной отправки вставьте токен в <b>server/config.json</b> (см. НАСТРОЙКА_TELEGRAM.txt) и перезапустите <b>ЗАПУСК.bat</b>.';
+    } else {
+      setBotStatus(`<span class="dot"></span> Telegram @${esc(TG.bot)} подключён`);
+      $('#app-banner').innerHTML = 'Бот активен. Привяжите chat_id атлета в профиле, затем отправляйте план в Telegram.';
+    }
+  } catch (_) {
+    TG.online = false; TG.demo = true; TG.bot = null;
+    setBotStatus(`<span class="dot" style="background:var(--missed)"></span> Откройте через ЗАПУСК.bat`);
+    $('#app-banner').innerHTML = 'Сейчас открыт файл напрямую. Для презентации и Telegram запустите <b>ЗАПУСК.bat</b> — браузер откроется сам.';
+  }
+}
+
+function lineOf(w) {
+  const m = metricsOf(w);
+  return `${TYPES[w.type].icon} <b>${esc(w.title)}</b>${m ? '\n' + esc(m) : ''}${w.desc ? '\n' + esc(w.desc) : ''}`;
+}
+function buildMessage(list, head) {
+  const sorted = [...list].sort((x, y) => x.date.localeCompare(y.date));
+  let html = `<b>${esc(head)}</b>`, last = '';
+  sorted.forEach(w => {
+    if (w.date !== last) { const d = pd(w.date); html += `\n\n<b>${DAYS[(d.getDay()+6)%7]}, ${fmt(d)}</b>`; last = w.date; }
+    html += '\n' + lineOf(w);
+  });
+  return html;
+}
+function reportKeyboard(list) {
+  const rows = list.filter(w => w.type !== 'rest').slice(0, 6).map(w => ([
+    { text: '✅', callback_data: `done:${w.id}` },
+    { text: '⚠️', callback_data: `part:${w.id}` },
+    { text: '❌', callback_data: `miss:${w.id}` },
+    { text: w.title.slice(0, 28), callback_data: `done:${w.id}` },
+  ]));
+  return rows.length ? { inline_keyboard: rows } : null;
+}
+
+async function tgSend(chatId, text, replyMarkup) {
+  const body = { chatId, text, parseMode: 'HTML' };
+  if (replyMarkup) body.replyMarkup = replyMarkup;
+  return api('/api/send', { method: 'POST', body: JSON.stringify(body) });
+}
+
+async function dispatch(a, list, head, single) {
+  const html = buildMessage(list, head);
+  const kb = single || list.length === 1;
+  a.chat.push({ who:'coach', html, kb, time:hhmm() });
+  list.forEach(w => { w.sent = true; });
+
+  const canReal = TG.online && !TG.demo && a.chatId;
+  if (canReal) {
+    try {
+      const markup = reportKeyboard(list);
+      await tgSend(a.chatId, html, markup);
+      toast(`Отправлено в Telegram (${a.tg || a.chatId}): ${list.length}`);
+    } catch (e) {
+      toast('Ошибка Telegram: ' + (e.message || 'не отправлено'));
+      render(); openChat();
+      return;
+    }
+  } else if (!a.chatId && TG.online && !TG.demo) {
+    toast('Укажите chat_id атлета в профиле — пока сохранено локально');
+  } else {
+    toast(TG.online ? `Демо: «отправлено» (${a.tg || 'без chat_id'})` : `Локально отмечено отправленным (${list.length})`);
+  }
+  render(); openChat();
+}
+
+function sendWeek() {
+  const a = cur(), mon = addD(CUR_MON, state.weekOff * 7), monS = ds(mon);
+  const list = a.workouts.filter(w => weekKey(w.date) === monS && !w.sent && !w.result && w.type !== 'rest');
+  if (!list.length) return;
+  dispatch(a, list, `📅 План на неделю ${fmt(mon)} – ${fmt(addD(mon, 6))}`, false);
+}
+
+function openChat() {
+  const a = cur();
+  const via = TG.bot ? `@${TG.bot}` : (TG.demo ? 'демо' : 'TRENA');
+  const linkHint = a.chatId
+    ? `chat_id ${esc(a.chatId)}`
+    : 'chat_id не привязан — см. профиль';
+  openModal(`
+  <div class="sheet tgsheet">
+    <div class="hd"><span class="av" style="background:${a.color};width:34px;height:34px;font-size:13px">${esc(initials(a.name))}</span>
+      <div>${esc(a.name)}<div style="font-weight:400;font-size:12px;color:var(--muted)">через ${esc(via)} · ${linkHint}</div></div>
+      <button class="x" onclick="closeModal()">×</button></div>
+    <div class="chat" id="chat">${a.chat.map(m => `
+      <div class="msg ${m.who}">${m.html}${m.kb ? '<div class="kb"><span>✅ Выполнил</span><span>⚠️ Частично</span><span>❌ Пропустил</span></div>' : ''}<span class="t">${m.time}</span></div>`).join('')}</div>
+    <div class="sendrow"><input id="chat-in" placeholder="Написать атлету…" onkeydown="if(event.key==='Enter')coachSay()"><button class="btn tg" onclick="coachSay()">➤</button></div>
+    <div class="ft"><button class="btn" onclick="simulateReply()">🎭 Симулировать ответ</button>
+      <button class="btn" onclick="pollTelegram(true)">↻ Обновить из Telegram</button></div>
+  </div>`);
+  const c = $('#chat'); if (c) c.scrollTop = c.scrollHeight;
+}
+
+async function coachSay() {
+  const v = $('#chat-in')?.value.trim(); if (!v) return;
+  const a = cur();
+  a.chat.push({ who:'coach', html:esc(v), time:hhmm() });
+  if (TG.online && !TG.demo && a.chatId) {
+    try { await tgSend(a.chatId, esc(v)); toast('Сообщение отправлено'); }
+    catch (e) { toast('Не отправлено: ' + e.message); }
+  } else {
+    toast(TG.demo || !TG.online ? 'Демо: только в этом чате' : 'Нужен chat_id в профиле');
+  }
+  openChat();
+}
+
+function applyReport(a, workoutId, status) {
+  const w = a.workouts.find(x => String(x.id) === String(workoutId));
+  if (!w || w.result) return false;
+  const res = genResult(a, w, Math.random);
+  res.status = status;
+  if (status === 'missed') { res.rpe = null; res.km = null; }
+  w.result = res;
+  const icon = { completed:'✅ Выполнил', partial:'⚠️ Частично', missed:'❌ Пропустил' }[status];
+  a.chat.push({ who:'athlete', html:`${icon}: ${esc(w.title)}${res.rpe ? '\nRPE ' + res.rpe + '/10' : ''}${res.km != null ? ' · ' + res.km + ' км' : ''}\n«${esc(res.fb)}»`, time:hhmm() });
+  a.chat.push({ who:'bot', html:'Отчёт принят 👌', time:hhmm() });
+  return true;
+}
+
+function simulateReply() {
+  const a = cur();
+  const w = a.workouts.filter(x => x.sent && !x.result && x.type !== 'rest').sort((x, y) => x.date.localeCompare(y.date))[0];
+  if (!w) { toast('Нет отправленных тренировок, ожидающих отчёта'); return; }
+  const probe = genResult(a, w, Math.random);
+  applyReport(a, w.id, probe.status);
+  render(); openChat();
+}
+
+async function pollTelegram(forceToast) {
+  if (!TG.online) { if (forceToast) toast('Сервер не запущен — откройте ЗАПУСК.bat'); return; }
+  try {
+    const q = new URLSearchParams({ since: String(TG.since) });
+    const a = cur();
+    if (a.chatId) q.set('chatId', a.chatId);
+    const data = await api('/api/poll?' + q.toString());
+    TG.demo = !!data.demo; TG.bot = data.bot || TG.bot; TG.chats = data.chats || [];
+    if (data.now) TG.since = data.now;
+    let changed = false;
+    for (const msg of (data.inbox || [])) {
+      const key = msg.chatId + ':' + msg.id;
+      if (TG.seenInbox.has(key)) continue;
+      TG.seenInbox.add(key);
+      const athlete = ATH.find(x => String(x.chatId) === String(msg.chatId));
+      if (!athlete) continue;
+      athlete.chat.push({ who:'athlete', html:esc(msg.text), time:msg.time || hhmm() });
+      changed = true;
+    }
+    for (const rep of (data.reports || [])) {
+      const athlete = ATH.find(x => String(x.chatId) === String(rep.chatId)) || cur();
+      if (applyReport(athlete, Number(rep.workoutId), rep.status)) changed = true;
+    }
+    if (changed) { render(); if ($('#chat')) openChat(); }
+    else if (forceToast) toast('Новых сообщений нет');
+  } catch (e) {
+    if (forceToast) toast('Опрос Telegram: ' + e.message);
+  }
+}
+
+function setAthleteChatId(id, value) {
+  const a = ATH.find(x => x.id === id); if (!a) return;
+  a.chatId = String(value || '').trim();
+  persistTgLinks();
+  render();
+  toast(a.chatId ? 'Telegram привязан' : 'Привязка снята');
+}
+function setAthleteTg(id, value) {
+  const a = ATH.find(x => x.id === id); if (!a) return;
+  a.tg = String(value || '').trim() || a.tg;
+  persistTgLinks();
+  renderHead();
+}
+function pickChatForAthlete(athleteId, chatId, username) {
+  const a = ATH.find(x => x.id === athleteId); if (!a) return;
+  a.chatId = String(chatId);
+  if (username) a.tg = username;
+  persistTgLinks();
+  render();
+  toast(`Привязан ${username || chatId}`);
+}
+function tgLinkCard(a) {
+  const chats = TG.chats || [];
+  const options = chats.map(c => `
+    <button class="btn" style="margin:4px 4px 0 0" onclick="pickChatForAthlete(${a.id}, '${esc(c.id)}', '${esc(c.username || '')}')">
+      ${esc(c.name || 'Без имени')} ${c.username ? esc(c.username) : ''} · <code>${esc(c.id)}</code>
+    </button>`).join('');
+  return `<div class="card wide"><h3>💬 Telegram</h3>
+    <div class="hint">Атлет пишет боту /start → появляется в списке ниже. Либо вставьте chat_id вручную.</div>
+    <div class="f2">
+      <div><label>Username</label><input value="${esc(a.tg || '')}" onchange="setAthleteTg(${a.id}, this.value)" placeholder="@username"></div>
+      <div><label>chat_id</label><input value="${esc(a.chatId || '')}" onchange="setAthleteChatId(${a.id}, this.value)" placeholder="например 123456789"></div>
+    </div>
+    <div style="margin-top:10px">
+      <div class="hint" style="margin:0 0 6px">Кто уже писал боту:</div>
+      ${options || '<span class="hint">Пока пусто — пусть атлет нажмёт /start у бота, затем «Обновить».</span>'}
+      <div style="margin-top:8px"><button class="btn" onclick="pollTelegram(true); setTimeout(() => { if(state.tab==='profile') render(); }, 300)">↻ Обновить список</button></div>
+    </div>
+  </div>`;
+}
+
+/* ---------------- вкладка «Прогресс» ---------------- */
+function viewProgress(a) {
+  const weeks = lastWeeks(8), st = weeks.map(m => weekStats(a, m)), now = st[7];
+  const prev4 = st.slice(0, 4).filter(x => x.completion != null), last4 = st.slice(4).filter(x => x.completion != null);
+  const avg = arr => arr.length ? sum(arr.map(x => x.completion)) / arr.length : null;
+  const c4 = avg(last4), cp = avg(prev4);
+  const rp = st.slice(4).filter(x => x.rpe != null);
+  const rpe = rp.length ? sum(rp.map(x => x.rpe)) / rp.length : null;
+  const delta = c4 != null && cp != null ? Math.round((c4 - cp) * 100) : null;
+  const kpi = (l, v, d) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  return `
+    <div class="kpis">
+      ${kpi('Выполнение плана · 4 нед.', c4 != null ? Math.round(c4 * 100) + '%' : '—', delta == null ? '' : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} п.п. к предыдущим 4 нед.`)}
+      ${kpi('Объём на этой неделе', `${now.actual} км`, `по плану ${now.planned} км`)}
+      ${kpi('Средний RPE · 4 нед.', rpe != null ? rpe.toFixed(1) : '—', rpe > 6.5 ? 'высокая нагрузка, следите за восстановлением' : 'нагрузка в норме')}
+      ${kpi('Серия без пропусков', streak(a), 'тренировок подряд')}
+    </div>
+    <div class="two">
+      <div class="card"><h3>Объём по неделям, км</h3>${barChart(weeks, st)}
+        <div class="legend"><span><i style="background:var(--accent);opacity:.28"></i>план</span><span><i style="background:var(--accent)"></i>факт</span></div></div>
+      <div class="card"><h3>Выполнение плана по неделям, %</h3>${lineChart(weeks, st)}</div>
+    </div>
+    <div class="card"><h3>Календарь выполнения · последние 8 недель</h3>${heatmap(a, weeks)}
+      <div class="legend"><span><i style="background:var(--ok)"></i>выполнено</span><span><i style="background:var(--partial)"></i>частично</span><span><i style="background:var(--missed)"></i>пропущено</span><span><i style="border:1px dashed var(--sent)"></i>ждёт отчёта</span></div></div>`;
+}
+const wl = m => { const d = pd(m); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}`; };
+function barChart(weeks, st) {
+  const W = 520, H = 200, L = 30, B = 22, T = 14, max = Math.max(10, ...st.map(s => Math.max(s.planned, s.actual))) * 1.15, step = (W - L) / weeks.length;
+  const y = v => T + (H - T - B) * (1 - v / max);
+  let g = [0, .5, 1].map(f => `<line class="grid-l" x1="${L}" x2="${W}" y1="${y(max * f / 1.15)}" y2="${y(max * f / 1.15)}"/><text x="2" y="${y(max * f / 1.15) + 3}">${Math.round(max * f / 1.15)}</text>`).join('');
+  weeks.forEach((m, i) => {
+    const x = L + i * step + 6, bw = (step - 12) / 2;
+    g += `<rect class="b-plan" x="${x}" y="${y(st[i].planned)}" width="${bw}" height="${H - B - y(st[i].planned)}" rx="3"/>
+          <rect class="b-act" x="${x + bw + 2}" y="${y(st[i].actual)}" width="${bw}" height="${Math.max(0, H - B - y(st[i].actual))}" rx="3"/>
+          <text x="${x + bw}" y="${H - 6}" text-anchor="middle">${wl(m)}</text>`;
+  });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+function lineChart(weeks, st) {
+  const W = 520, H = 200, L = 30, B = 22, T = 14, step = (W - L) / weeks.length;
+  const y = v => T + (H - T - B) * (1 - v), x = i => L + i * step + step / 2;
+  let g = [0, .5, 1].map(f => `<line class="grid-l" x1="${L}" x2="${W}" y1="${y(f)}" y2="${y(f)}"/><text x="2" y="${y(f) + 3}">${f * 100}</text>`).join('');
+  const pts = st.map((s, i) => s.completion == null ? null : [x(i), y(s.completion)]);
+  g += `<polyline class="ln" points="${pts.filter(Boolean).map(p => p.join(',')).join(' ')}"/>`;
+  pts.forEach((p, i) => { if (p) g += `<circle class="pt" cx="${p[0]}" cy="${p[1]}" r="4"/><text x="${p[0]}" y="${p[1] - 9}" text-anchor="middle">${Math.round(st[i].completion * 100)}</text>`; });
+  weeks.forEach((m, i) => { g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle">${wl(m)}</text>`; });
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}">${g}</svg>`;
+}
+function heatmap(a, weeks) {
+  let h = `<div class="heat"><span></span>${DAYS.map(d => `<span style="text-align:center">${d}</span>`).join('')}`;
+  weeks.forEach(m => {
+    h += `<span>${wl(m)}</span>`;
+    for (let i = 0; i < 7; i++) {
+      const s = ds(addD(pd(m), i)), w = a.workouts.find(x => x.date === s);
+      const cls = !w ? 'none' : w.type === 'rest' ? 'rest' : w.result ? w.result.status : 'sent';
+      h += `<div class="cell ${cls}" title="${w ? esc(w.title) : ''}"></div>`;
+    }
+  });
+  return h + '</div>';
+}
+
+/* ---------------- вкладка «Отчёты» ---------------- */
+function viewReports(a) {
+  const list = dueOf(a).sort((x, y) => y.date.localeCompare(x.date)).slice(0, 14);
+  if (!list.length) return '<div class="card">Отчётов пока нет.</div>';
+  return `<div class="card">${list.map(w => { const r = w.result, d = pd(w.date); return `
+    <div class="rep">
+      <div class="rpe">${r.rpe ?? '—'}<small>RPE</small></div>
+      <div style="flex:1">
+        <div><b>${TYPES[w.type].icon} ${esc(w.title)}</b> <span class="badge ${r.status}">${ST[r.status]}</span></div>
+        <div class="meta">${DAYS[(d.getDay()+6)%7]}, ${fmt(d)}${(w.type === 'running' || w.type === 'cycling') ? ` · план ${w.km} км${r.km != null ? ', факт ' + r.km + ' км' : ''}` : w.type === 'swimming' && w.km != null ? ` · план ${Math.round(w.km * 1000)} м${r.km != null ? ', факт ' + Math.round(r.km * 1000) + ' м' : ''}` : ''}</div>
+        <q>«${esc(r.fb)}»</q>
+      </div></div>`; }).join('')}</div>`;
+}
+
+/* ---------------- вкладка «Профиль атлета» ---------------- */
+const BASE_OPTS = ['Стадион','Беговая дорожка','Парк / лес','Горы / трейлы','Шоссе / веломаршрут','Площадка для ОФП','Тренажёрный зал','Бассейн','Открытая вода','Велотренажёр','Резинки / эспандеры','Гантели / гири','Манеж зимой'];
+const TOOL_OPTS = ['Часы Garmin','Нагрудный пульсометр','МФР-ролл','Перкуссионный массажёр','Мячи для МФР','Кинезио-тейп','Умные весы'];
+const VALUE_OPTS = ['Чёткие цифры и план','Разнообразие тренировок','Бег в удовольствие','Здоровье и долголетие','Соревновательность','Быстрый прогресс','Без перегрузок','Общение / беговая группа','Гибкий график'];
+const PB_LIST = [{ k:'5 км', km:5 }, { k:'10 км', km:10 }, { k:'21,1 км', km:21.0975 }, { k:'42,2 км', km:42.195 }];
+
+const parseTime = s => {
+  if (!s) return null; const p = s.trim().split(':').map(Number);
+  if (p.length < 2 || p.length > 3 || p.some(x => isNaN(x) || x < 0)) return null;
+  return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p[0]*60 + p[1];
+};
+const fmtTime = t => { t = Math.round(t); const h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return h ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`; };
+const daysTo = s => Math.round((pd(s) - pd(TODAY_S)) / 864e5);
+const upcoming = a => a.profile.starts.filter(s => s.date >= TODAY_S).sort((x, y) => x.date.localeCompare(y.date));
+function goalOf(a) {
+  const up = upcoming(a), s = up.find(x => x.prio === 'A') || up[0];
+  return s ? `${s.name}${s.goal ? ' · ' + s.goal : ''}` : 'Цели не заданы';
+}
+function startChip(a) { const s = upcoming(a)[0]; return s ? `<span class="chip">До «${esc(s.name)}»: ${daysTo(s.date)} дн.</span>` : ''; }
+function extrasOf(a, i) {
+  return a.profile.extras.filter(e => e.days.includes(i)).map(e => `<div class="ex" title="${esc(e.note)}">➕ ${esc(e.name || 'Доп. тренировка')}</div>`).join('');
+}
+function gapText(p, i) {
+  const d = PB_LIST[i], v = p.pbs[d.k], now = parseTime(v.now), goal = parseTime(v.goal);
+  if ((v.now && now == null) || (v.goal && goal == null)) return '<span style="color:var(--missed)">формат ч:мм:сс</span>';
+  if (goal == null) return '—';
+  const pace = `${fmtTime(goal / d.km)}/км`;
+  if (now == null) return `цель: ${pace}`;
+  return now > goal ? `−${fmtTime(now - goal)} · цель ${pace}` : `цель достигнута · ${pace}`;
+}
+
+function chipGroup(key, opts) {
+  const p = cur().profile, all = [...opts, ...p[key].filter(v => !opts.includes(v))];
+  return `<div class="chips">${all.map(v => `<button class="tgl ${p[key].includes(v) ? 'on' : ''}" data-v="${esc(v)}" onclick="toggleChip('${key}', this.dataset.v)">${esc(v)}</button>`).join('')}</div>
+    <input data-k="${key}" placeholder="Добавить своё и нажать Enter…" onkeydown="if(event.key==='Enter')addChip('${key}', this)">`;
+}
+function toggleChip(key, v) { const p = cur().profile, i = p[key].indexOf(v); if (i < 0) p[key].push(v); else p[key].splice(i, 1); render(); }
+function addChip(key, el) {
+  const v = el.value.trim(); if (!v) return;
+  const p = cur().profile; if (!p[key].includes(v)) p[key].push(v);
+  render(); const n = $(`input[data-k="${key}"]`); if (n) n.focus();
+}
+const findIn = (key, id) => cur().profile[key].find(x => x.id === id);
+function setP(k, v) { cur().profile[k] = v; }
+
+function addExtra() { cur().profile.extras.push({ id:NEXT_ID++, name:'', days:[], note:'' }); render(); }
+function delExtra(id) { const p = cur().profile; p.extras = p.extras.filter(e => e.id !== id); render(); }
+function setExtra(id, f, v) { findIn('extras', id)[f] = v.trim(); }
+function toggleExtraDay(id, d) { const e = findIn('extras', id), i = e.days.indexOf(d); if (i < 0) e.days.push(d); else e.days.splice(i, 1); render(); }
+
+function addStart() { cur().profile.starts.push({ id:NEXT_ID++, prio:'B', name:'', date:'', dist:'', goal:'' }); render(); }
+function delStart(id) { const p = cur().profile; p.starts = p.starts.filter(s => s.id !== id); render(); }
+function setStart(id, f, v) { findIn('starts', id)[f] = v.trim(); renderSide(); renderHead(); }
+function setPB(i, f, v) { const p = cur().profile; p.pbs[PB_LIST[i].k][f] = v.trim(); const c = $('#gap-' + i); if (c) c.innerHTML = gapText(p, i); }
+
+function extrasHtml(p) {
+  return p.extras.map(e => `
+    <div class="row-item" style="grid-template-columns:1fr auto 30px">
+      <input value="${esc(e.name)}" placeholder="Например: Плавание 30 мин" onchange="setExtra(${e.id}, 'name', this.value)">
+      <div class="days">${DAYS.map((d, i) => `<button class="${e.days.includes(i) ? 'on' : ''}" onclick="toggleExtraDay(${e.id}, ${i})">${d}</button>`).join('')}</div>
+      <button class="x" onclick="delExtra(${e.id})" title="Удалить">×</button>
+      <input style="grid-column:1/-1" value="${esc(e.note)}" placeholder="Заметка: где, сколько, как влияет на бег" onchange="setExtra(${e.id}, 'note', this.value)">
+    </div>`).join('') + `<button class="btn" style="margin-top:10px" onclick="addExtra()">+ Добавить тренировку</button>`;
+}
+function startsHtml(p) {
+  const list = [...p.starts].sort((x, y) => (x.date || '9').localeCompare(y.date || '9'));
+  return list.map(s => `
+    <div class="row-item" style="grid-template-columns:64px 1fr 150px 30px">
+      <select title="A — главный старт сезона, B — важный, C — проходной" onchange="setStart(${s.id}, 'prio', this.value)">${['A','B','C'].map(x => `<option ${s.prio === x ? 'selected' : ''}>${x}</option>`).join('')}</select>
+      <input value="${esc(s.name)}" placeholder="Название старта" onchange="setStart(${s.id}, 'name', this.value)">
+      <input type="date" value="${esc(s.date)}" onchange="setStart(${s.id}, 'date', this.value)">
+      <button class="x" onclick="delStart(${s.id})" title="Удалить">×</button>
+      <span></span>
+      <input value="${esc(s.dist)}" placeholder="Дистанция, напр. 21,1 км" onchange="setStart(${s.id}, 'dist', this.value)">
+      <input value="${esc(s.goal)}" placeholder="Цель, напр. 1:45:00" onchange="setStart(${s.id}, 'goal', this.value)">
+      <span></span>
+    </div>`).join('') + `<button class="btn" style="margin-top:10px" onclick="addStart()">+ Добавить старт</button>`;
+}
+function pbHtml(p) {
+  return `<table class="pbt"><thead><tr><th>Дистанция</th><th>Личник сейчас</th><th>Цель</th><th>До цели</th></tr></thead><tbody>
+    ${PB_LIST.map((d, i) => `<tr><td><b>${d.k}</b></td>
+      <td><input value="${esc(p.pbs[d.k].now)}" placeholder="ч:мм:сс" onchange="setPB(${i}, 'now', this.value)"></td>
+      <td><input value="${esc(p.pbs[d.k].goal)}" placeholder="ч:мм:сс" onchange="setPB(${i}, 'goal', this.value)"></td>
+      <td class="gap" id="gap-${i}">${gapText(p, i)}</td></tr>`).join('')}</tbody></table>`;
+}
+function viewProfile(a) {
+  const p = a.profile, nx = upcoming(a)[0];
+  const kpi = (l, v, d) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="d">${d}</div></div>`;
+  const perWeek = sum(p.extras.map(e => e.days.length));
+  return `
+    <p class="hint" style="margin:0 0 12px">Профиль помогает подбирать нагрузку: изменения сохраняются автоматически, дни доп. тренировок видны в календаре плана.</p>
+    <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+      ${kpi('Ближайший старт', nx ? daysTo(nx.date) + ' дн.' : '—', nx ? esc(nx.name + (nx.goal ? ' · ' + nx.goal : '')) : 'добавьте старт ниже')}
+      ${kpi('Доп. тренировок в неделю', perWeek, p.extras.length ? esc(p.extras.map(e => e.name).filter(Boolean).join(', ')) : 'не заданы')}
+      ${kpi('Оснащение', p.base.length + p.tools.length, `${p.base.length} мест · ${p.tools.length} инструментов`)}
+    </div>
+    <div class="prof">
+      ${tgLinkCard(a)}
+      <div class="card"><h3>🏟 База: где и на чём тренируется</h3>${chipGroup('base', BASE_OPTS)}</div>
+      <div class="card"><h3>⌚ Инструменты и гаджеты</h3>${chipGroup('tools', TOOL_OPTS)}</div>
+      <div class="card wide"><h3>➕ Дополнительные тренировки</h3><div class="hint">Отметьте дни недели: так плановые тренировки не наложатся на плавание, зал и другие нагрузки.</div>${extrasHtml(p)}</div>
+      <div class="card wide"><h3>🏁 Ключевые старты</h3><div class="hint">A — главный старт сезона, B — важный, C — проходной. Ближайший приоритетный старт показывается в шапке и в плане.</div>${startsHtml(p)}</div>
+      <div class="card wide"><h3>⏱ Личные рекорды: сейчас и цель</h3><div class="hint">Время в формате ч:мм:сс или мм:сс. Разница и целевой темп считаются сами.</div>${pbHtml(p)}</div>
+      ${vdotCard(a)}
+      <div class="card wide"><h3>❤️ Мотивация и что важно в тренировках</h3>
+        <label style="margin-top:0">Для чего он бегает</label>
+        <textarea rows="3" onchange="setP('why', this.value.trim())" placeholder="Своими словами: зачем атлету бег, чего он хочет добиться">${esc(p.why)}</textarea>
+        <label>Что важно в тренировочном процессе</label>${chipGroup('values', VALUE_OPTS)}
+        <label>Заметки тренера</label>
+        <textarea rows="2" onchange="setP('notes', this.value.trim())" placeholder="Ограничения, график работы, особенности восстановления">${esc(p.notes)}</textarea>
+      </div>
+    </div>`;
+}
+
+/* ---------------- VDOT-калькулятор ---------------- */
+/* Модель Дэниелса–Гилберта: VO₂ по скорости и доля VO₂max, доступная на данной длительности забега. */
+const VD_DISTS = [
+  { k:'1500 м', m:1500 }, { k:'1 миля', m:1609.34 }, { k:'3 км', m:3000 }, { k:'5 км', m:5000 },
+  { k:'10 км', m:10000 }, { k:'15 км', m:15000 }, { k:'Полумарафон', m:21097.5 }, { k:'Марафон', m:42195 },
+];
+const vdotOf = (m, sec) => {
+  const t = sec / 60, v = m / t;
+  return (-4.6 + 0.182258 * v + 0.000104 * v * v) / (0.8 + 0.1894393 * Math.exp(-0.012778 * t) + 0.2989558 * Math.exp(-0.1932605 * t));
+};
+const timeFor = (vdot, m) => {
+  let lo = m / 9, hi = m / 1.2;
+  for (let i = 0; i < 80; i++) { const mid = (lo + hi) / 2; if (vdotOf(m, mid) > vdot) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
+};
+const paceAt = (vdot, f) => { const A = 0.000104, B = 0.182258, c = f * vdot + 4.6; return 60000 / ((-B + Math.sqrt(B * B + 4 * A * c)) / (2 * A)); };
+const vdFmt = v => v.toFixed(1).replace('.', ',');
+const fmtPace = s => fmtTime(s);
+function paces(v) {
+  const e1 = paceAt(v, .59), e2 = paceAt(v, .74);
+  return {
+    E:{ ru:'Лёгкий', slow:e1, fast:e2, p:(e1 + e2) / 2, zone:2, desc:'База и восстановление, 59–74% VO₂max' },
+    M:{ ru:'Марафонский', p:timeFor(v, 42195) / 42.195, zone:3, desc:'Темп марафонской дистанции' },
+    T:{ ru:'Темповый', p:paceAt(v, .88), zone:4, desc:'Темповый бег на пороге, ~88% VO₂max' },
+    I:{ ru:'Интервальный', p:paceAt(v, .975), zone:5, desc:'Интервалы на МПК, 97–100% VO₂max' },
+    R:{ ru:'Повторный', p:paceAt(v, 1.06), zone:5, desc:'Короткие повторения на скорость и экономичность' },
+  };
+}
+function vdotFromPBs(a) {
+  let best = null;
+  PB_LIST.forEach(d => {
+    const raw = a.profile.pbs[d.k].now, t = parseTime(raw); if (t == null || t <= 0) return;
+    const v = vdotOf(d.km * 1000, t), vd = VD_DISTS.find(x => Math.abs(x.m - d.km * 1000) < 50);
+    if (!best || v > best.v) best = { v, note:`по личному рекорду: ${vd.k} ${raw}`, dist:VD_DISTS.indexOf(vd), time:raw };
+  });
+  return best;
+}
+ATH.forEach(a => { const r = vdotFromPBs(a); if (r) { a.vdot = Math.round(r.v * 10) / 10; a.vdotNote = r.note; } });
+
+/* панель в редакторе тренировки */
+function vdotPanelHtml(a) {
+  const v = a.vdot, P = v ? paces(v) : null;
+  const opts = VD_DISTS.map((d, i) => `<option value="${i}" ${d.m === 10000 ? 'selected' : ''}>${d.k}</option>`).join('');
+  return `<div class="vd">
+    <div class="vd-top"><b>${v ? 'VDOT атлета: ' + vdFmt(v) : 'VDOT не задан'}</b>
+      <span class="hint" style="margin:0">${v ? esc(a.vdotNote || '') : 'введите недавний результат ниже'}</span></div>
+    ${v ? `<div class="chips" style="margin:8px 0 0">${Object.entries(P).map(([k, x]) => `<button type="button" class="tgl" onclick="applyPace('${k}')" title="${esc(x.ru + ': ' + x.desc)}">${k} · ${k === 'E' ? fmtPace(x.fast) + '–' + fmtPace(x.slow) : fmtPace(x.p)}</button>`).join('')}</div>
+    <div class="hint" style="margin:6px 0 0">Нажмите на темп, чтобы подставить его в тренировку: E лёгкий, M марафонский, T темповый, I интервальный, R повторный.</div>` : ''}
+    <details style="margin-top:8px"><summary style="cursor:pointer;color:var(--accent);font-size:13px">Пересчитать VDOT по результату</summary>
+      <div class="f3" style="margin-top:8px"><select id="vd-dist-i">${opts}</select><input id="vd-time-i" placeholder="ч:мм:сс"><button type="button" class="btn" onclick="recalcInline()">Рассчитать</button></div></details>
+  </div>`;
+}
+function applyPace(k) {
+  const a = cur(); if (!a.vdot) return;
+  const x = paces(a.vdot)[k];
+  $('#e-pace').value = fmtPace(x.p); $('#e-zone').value = String(x.zone);
+  toast(`Темп ${fmtPace(x.p)}/км (${k}) подставлен в тренировку`);
+}
+function recalcInline() {
+  const a = cur(), d = VD_DISTS[+$('#vd-dist-i').value], raw = $('#vd-time-i').value.trim(), t = parseTime(raw);
+  if (t == null || t <= 0) { toast('Укажите время в формате ч:мм:сс или мм:сс'); return; }
+  const v = vdotOf(d.m, t);
+  if (!(v > 15 && v < 90)) { toast('Результат вне разумного диапазона'); return; }
+  a.vdot = Math.round(v * 10) / 10; a.vdotNote = `по результату: ${d.k} ${raw}`;
+  $('#f-vdot').innerHTML = vdotPanelHtml(a); render();
+  toast(`VDOT пересчитан: ${vdFmt(a.vdot)}`);
+}
+
+/* отдельное окно калькулятора */
+let VD_LAST = null;
+function vdotResultsHtml(v, canSave) {
+  const P = paces(v);
+  const rows = Object.entries(P).map(([k, x]) => `<tr><td><b>${k}</b> · ${x.ru}</td>
+    <td class="m">${k === 'E' ? fmtPace(x.fast) + '–' + fmtPace(x.slow) : fmtPace(x.p)}</td>
+    <td class="m">${k === 'E' ? '—' : fmtTime(x.p * .4)}</td><td style="color:var(--muted)">${x.desc}</td></tr>`).join('');
+  const eq = VD_DISTS.map(d => { const t = timeFor(v, d.m); return `<tr><td>${d.k}</td><td class="m">${fmtTime(t)}</td><td style="color:var(--muted)">${fmtPace(t / (d.m / 1000))}/км</td></tr>`; }).join('');
+  return `
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin:14px 0 6px">
+      <div><div class="hint" style="margin:0">VDOT</div><div class="vdnum">${vdFmt(v)}</div></div>
+      ${canSave ? `<button class="btn primary" onclick="saveVdot()">Сохранить как VDOT атлета</button>` : ''}
+    </div>
+    <div class="vdgrid">
+      <div><h3 style="margin:10px 0 0;font-size:13px">Тренировочные темпы</h3>
+        <table class="vdt"><thead><tr><th>Тип</th><th>Мин/км</th><th>400 м</th><th>Назначение</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div><h3 style="margin:10px 0 0;font-size:13px">Эквивалентные результаты</h3>
+        <table class="vdt"><thead><tr><th>Дистанция</th><th>Время</th><th>Темп</th></tr></thead><tbody>${eq}</tbody></table></div>
+    </div>`;
+}
+function openVdot() {
+  const a = cur(), src = vdotFromPBs(a);
+  const di = src ? src.dist : VD_DISTS.findIndex(x => x.m === 10000);
+  openModal(`
+  <div class="sheet" style="width:min(780px,100%)">
+    <div class="hd">⚡ VDOT-калькулятор · ${esc(a.name)}<button class="x" onclick="closeModal()">×</button></div>
+    <div class="bd">
+      <p class="hint" style="margin:0 0 4px">Введите недавний результат: калькулятор оценит текущую форму, подберёт тренировочные темпы и покажет эквивалентные результаты на других дистанциях.</p>
+      <div class="vdform">
+        <div><label>Дистанция</label><select id="vd-dist" onchange="calcVdot()">${VD_DISTS.map((d, i) => `<option value="${i}" ${i === di ? 'selected' : ''}>${d.k}</option>`).join('')}</select></div>
+        <div><label>Результат</label><input id="vd-time" value="${src ? esc(src.time) : ''}" placeholder="ч:мм:сс или мм:сс" oninput="calcVdot()"></div>
+      </div>
+      <div id="vd-out"></div>
+    </div>
+    <div class="ft"><span class="hint" style="margin:0">Расчёт по модели Дэниелса–Гилберта. Значения могут немного отличаться от калькулятора на сайте.</span>
+      <span class="grow"></span><a class="btn" href="https://vdoto2.com/calculator" target="_blank" rel="noopener" style="text-decoration:none">Открыть vdoto2.com ↗</a></div>
+  </div>`);
+  calcVdot();
+}
+function calcVdot() {
+  const a = cur(), d = VD_DISTS[+$('#vd-dist').value], raw = $('#vd-time').value.trim(), t = parseTime(raw), out = $('#vd-out');
+  if (!raw) {
+    VD_LAST = null;
+    out.innerHTML = a.vdot ? `<p class="hint" style="margin:10px 0 0">Показаны темпы для текущего VDOT атлета. Введите результат, чтобы пересчитать.</p>` + vdotResultsHtml(a.vdot, false)
+                           : '<p class="hint" style="margin:10px 0 0">Введите результат забега или контрольной тренировки.</p>';
+    return;
+  }
+  if (t == null || t <= 0) { out.innerHTML = '<p class="hint" style="margin:10px 0 0;color:var(--missed)">Формат времени: ч:мм:сс или мм:сс.</p>'; return; }
+  const v = vdotOf(d.m, t);
+  if (!(v > 15 && v < 90)) { VD_LAST = null; out.innerHTML = '<p class="hint" style="margin:10px 0 0;color:var(--missed)">Результат вне разумного диапазона. Проверьте время и дистанцию.</p>'; return; }
+  VD_LAST = { v, note:`по результату: ${d.k} ${raw}` };
+  out.innerHTML = vdotResultsHtml(v, true);
+}
+function saveVdot() {
+  const a = cur(); if (!VD_LAST) return;
+  a.vdot = Math.round(VD_LAST.v * 10) / 10; a.vdotNote = VD_LAST.note;
+  render(); toast(`VDOT атлета сохранён: ${vdFmt(a.vdot)}`);
+}
+function vdotFromRecords() {
+  const a = cur(), r = vdotFromPBs(a);
+  if (!r) { toast('Заполните хотя бы один личный рекорд'); return; }
+  a.vdot = Math.round(r.v * 10) / 10; a.vdotNote = r.note; render(); toast(`VDOT обновлён: ${vdFmt(a.vdot)}`);
+}
+function vdotCard(a) {
+  return `<div class="card wide"><h3>⚡ VDOT и тренировочные темпы</h3>
+    ${a.vdot ? `<div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap">
+      <div><div class="vdnum">${vdFmt(a.vdot)}</div><div class="hint" style="margin:4px 0 0">${esc(a.vdotNote || '')}</div></div>
+      <div class="chips" style="margin:0">${Object.entries(paces(a.vdot)).map(([k, x]) => `<span class="chip" title="${esc(x.ru)}"><b>${k}</b> ${k === 'E' ? fmtPace(x.fast) + '–' + fmtPace(x.slow) : fmtPace(x.p)}</span>`).join('')}</div>
+    </div>` : '<div class="hint">VDOT ещё не рассчитан: введите результат в калькуляторе или заполните личные рекорды.</div>'}
+    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" onclick="openVdot()">Открыть калькулятор</button>
+      <button class="btn" onclick="vdotFromRecords()">Взять VDOT из личных рекордов</button>
+    </div></div>`;
+}
+
+syncThemeButtons();
+render();
+refreshBotStatus();
+setInterval(() => { refreshBotStatus(); pollTelegram(false); }, 4000);
+</script>
+</body>
+</html>

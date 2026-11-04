@@ -61,8 +61,8 @@ const ADMIN_TELEGRAM_IDS = String(process.env.ADMIN_TELEGRAM_IDS || '')
   .filter(Boolean);
 
 if (!BOT_TOKEN) {
-  console.error('BOT_TOKEN is missing in .env');
-  process.exit(1);
+  // Не гасим процесс на Railway (иначе 502). Бот/вход не заработают, пока не зададите BOT_TOKEN в Variables.
+  console.error('[FATAL] BOT_TOKEN is missing — задайте переменную в Railway → Variables');
 }
 
 const app = express();
@@ -134,10 +134,12 @@ function authPayload(user, session) {
 
 app.get('/api/health', (_req, res) => {
   res.json({
-    ok: true,
+    ok: !!BOT_TOKEN,
     mode: MODE,
     bot: BOT_USERNAME,
     publicUrl: PUBLIC_URL || null,
+    port: PORT,
+    botTokenConfigured: !!BOT_TOKEN,
   });
 });
 
@@ -638,7 +640,11 @@ if (fs.existsSync(webDist)) {
 
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`TRENA server http://0.0.0.0:${PORT}`);
-  console.log(`Bot @${BOT_USERNAME} · mode=${MODE}`);
+  console.log(`Bot @${BOT_USERNAME} · mode=${MODE} · token=${BOT_TOKEN ? 'yes' : 'NO'}`);
+  if (!BOT_TOKEN) {
+    console.error('[FATAL] Без BOT_TOKEN вход через Telegram не работает. Railway → Variables → BOT_TOKEN');
+    return;
+  }
   const onLogin = (user) => console.log(`[login] ${user.username || user.telegram_id}`);
   if (MODE === 'cloud' && PUBLIC_URL) {
     try {

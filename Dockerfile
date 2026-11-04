@@ -10,8 +10,9 @@ COPY apps/web ./apps/web
 RUN mkdir -p /app/data
 
 ENV MODE=cloud
-# PORT задаёт Railway сам — не фиксируем 8765
-EXPOSE 8080
+# Фиксируем порт — в Railway Networking укажите тот же: 8000
+ENV PORT=8000
+EXPOSE 8000
 # Том: Settings → Volumes → /app/data
 
 CMD ["node", "apps/server/src/index.js"]

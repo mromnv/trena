@@ -6,12 +6,12 @@ RUN cd apps/server && npm install --omit=dev
 
 COPY apps/server ./apps/server
 COPY apps/web ./apps/web
-COPY .env.example ./.env.example
 
 RUN mkdir -p /app/data
 
 ENV PORT=8765 MODE=cloud
 EXPOSE 8765
-VOLUME ["/app/data"]
+# Том данных подключайте в Railway: Settings → Volumes → /app/data
+# (инструкция VOLUME в Dockerfile на Railway запрещена)
 
 CMD ["node", "apps/server/src/index.js"]

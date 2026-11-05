@@ -21,6 +21,7 @@ const state = {
   coachTab: 'plan', // plan | profile | stats
   coachMain: 'team', // team | me
   coachProfile: null,
+  coachPhoto: null, // null = не меняли, '' = убрали, строка = новое фото
   athleteTab: 'plan', // plan | coaches | profile | stats
   viewingWorkoutId: null,
   statsPeriod: 'week', // week | month | season
@@ -317,6 +318,61 @@ async function adminUnlink(id) {
   render();
 }
 
+function safePhoto(src) {
+  return /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(src || '') ? src : '';
+}
+
+function coachPhotoValue() {
+  if (state.coachPhoto == null) return safePhoto(state.coachProfile?.photo);
+  return safePhoto(state.coachPhoto);
+}
+
+function applyCoachPhotoPreview(dataUrl) {
+  state.coachPhoto = dataUrl || '';
+  const img = $('#cp-photo-img');
+  const empty = $('#cp-photo-empty');
+  if (img) {
+    if (state.coachPhoto) {
+      img.src = state.coachPhoto;
+      img.hidden = false;
+    } else {
+      img.removeAttribute('src');
+      img.hidden = true;
+    }
+  }
+  if (empty) empty.hidden = !!state.coachPhoto;
+}
+
+function compressImageFile(file) {
+  return new Promise((resolve, reject) => {
+    if (!file || !/^image\/(jpeg|png|webp|gif)$/i.test(file.type)) {
+      reject(new Error('Нужно изображение JPEG, PNG или WebP'));
+      return;
+    }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 720;
+      const scale = Math.min(1, max / Math.max(img.width || 1, img.height || 1));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      URL.revokeObjectURL(url);
+      const data = canvas.toDataURL('image/jpeg', 0.82);
+      if (data.length > 480000) reject(new Error('Фото слишком большое, выберите снимок поменьше'));
+      else resolve(data);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Не удалось прочитать фото'));
+    };
+    img.src = url;
+  });
+}
+
 async function saveCoachProfileForm() {
   const focus = [...document.querySelectorAll('#cp-focus .tgl.on')].map((el) => el.textContent.trim());
   const data = await api('/api/coach/profile', {
@@ -327,9 +383,11 @@ async function saveCoachProfileForm() {
       experience: $('#cp-experience')?.value.trim() || '',
       bio: $('#cp-bio')?.value.trim() || '',
       focus,
+      photo: state.coachPhoto == null ? (state.coachProfile?.photo || '') : state.coachPhoto,
     }),
   });
   state.coachProfile = data.profile;
+  state.coachPhoto = null;
   toast('Профиль сохранён — ученики увидят его во вкладке «Тренеры»');
   render();
 }
@@ -340,6 +398,7 @@ async function loadCoach() {
     api('/api/coach/profile'),
   ]);
   state.coachProfile = profile.profile || null;
+  state.coachPhoto = null;
   state.athletes = data.athletes || [];
   const active = state.athletes.filter((a) => a.status === 'active');
   if (!state.selectedAthleteId && active[0]) state.selectedAthleteId = active[0].athlete_user_id;
@@ -1121,10 +1180,28 @@ function renderCoachResume() {
   const p = state.coachProfile || {};
   const focus = new Set(p.focus || []);
   const focusOpts = [...COACH_FOCUS, ...(p.focus || []).filter((v) => !COACH_FOCUS.includes(v))];
+  const photo = coachPhotoValue();
   return `<div class="panel">
     <h3>Резюме для учеников</h3>
-    <p class="hint">Текст виден ученикам во вкладке «Тренеры», когда они выбирают, к кому пойти.</p>
+    <p class="hint">Текст и фото видят ученики во вкладке «Тренеры», когда выбирают, к кому пойти.</p>
     <div class="stack">
+      <div>
+        <label>Фото</label>
+        <div class="photo-row">
+          <button type="button" class="photo-box" data-act="pick-coach-photo" title="Выбрать фото">
+            <img id="cp-photo-img" alt="" ${photo ? `src="${esc(photo)}"` : 'hidden'}>
+            <span id="cp-photo-empty" ${photo ? 'hidden' : ''}>Фото</span>
+          </button>
+          <div>
+            <input id="cp-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+            <div class="row">
+              <button type="button" class="btn" data-act="pick-coach-photo" style="width:auto">Выбрать фото</button>
+              <button type="button" class="btn ghost" data-act="clear-coach-photo" style="width:auto">Убрать</button>
+            </div>
+            <p class="hint">Можно вставить снимок из буфера: Ctrl+V</p>
+          </div>
+        </div>
+      </div>
       <div><label>Коротко о себе</label><input id="cp-headline" maxlength="140" value="${esc(p.headline || '')}" placeholder="Подготовка к 10 км и полумарафону, акцент на технику"></div>
       <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div><label>Город</label><input id="cp-city" maxlength="80" value="${esc(p.city || '')}" placeholder="Москва"></div>
@@ -1146,9 +1223,14 @@ function coachCardHtml(c, actionHtml) {
   const name = c.first_name || c.username || 'Тренер';
   const meta = [c.city, c.experience].filter(Boolean).join(' · ');
   const focus = (c.focus || []).map((f) => `<span class="pill">${esc(f)}</span>`).join('');
+  const photo = safePhoto(c.photo);
+  const ava = photo
+    ? `<img class="coach-ava" src="${esc(photo)}" alt="">`
+    : `<span class="coach-ava ph">${esc(initials(c))}</span>`;
   return `<article class="coach-card">
     <div class="coach-card-top">
-      <div>
+      ${ava}
+      <div class="grow">
         <b>${esc(name)}</b> ${c.username ? `<span class="muted">@${esc(c.username)}</span>` : ''}
         ${c.headline ? `<div class="headline">${esc(c.headline)}</div>` : ''}
         ${meta ? `<div class="muted">${esc(meta)}</div>` : ''}
@@ -1756,6 +1838,8 @@ async function handleAct(btn) {
     if (act === 'coach-main-team') { state.coachMain = 'team'; render(); }
     if (act === 'coach-main-me') { state.coachMain = 'me'; render(); }
     if (act === 'save-coach-profile') await saveCoachProfileForm();
+    if (act === 'pick-coach-photo') $('#cp-photo-file')?.click();
+    if (act === 'clear-coach-photo') applyCoachPhotoPreview('');
     if (act === 'open-wo') openWorkout(btn.dataset.id);
     if (act === 'ath-tab-plan') { state.athleteTab = 'plan'; render(); }
     if (act === 'ath-tab-coaches') { state.athleteTab = 'coaches'; render(); }
@@ -1797,6 +1881,24 @@ async function handleAct(btn) {
 app.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-act]');
   if (btn) handleAct(btn);
+});
+
+app.addEventListener('change', (e) => {
+  if (e.target?.id !== 'cp-photo-file') return;
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  compressImageFile(file).then(applyCoachPhotoPreview).catch((err) => toast(err.message || 'Ошибка'));
+});
+
+app.addEventListener('paste', (e) => {
+  if (!$('#cp-photo-file')) return;
+  const item = [...(e.clipboardData?.items || [])].find((i) => String(i.type || '').startsWith('image/'));
+  if (!item) return;
+  const file = item.getAsFile();
+  if (!file) return;
+  e.preventDefault();
+  compressImageFile(file).then(applyCoachPhotoPreview).catch((err) => toast(err.message || 'Ошибка'));
 });
 
 app.addEventListener('keydown', (e) => {

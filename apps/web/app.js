@@ -19,7 +19,10 @@ const state = {
   coachSearch: '',
   selectedAthleteId: null,
   coachTab: 'plan', // plan | profile | stats
-  athleteTab: 'plan', // plan | profile | stats
+  coachMain: 'team', // team | me
+  coachProfile: null,
+  athleteTab: 'plan', // plan | coaches | profile | stats
+  viewingWorkoutId: null,
   statsPeriod: 'week', // week | month | season
   editingWorkoutId: null,
   dossier: null,
@@ -40,6 +43,7 @@ const TYPE_LABEL = {
 const VALUE_OPTS = ['Чёткие цифры и план', 'Разнообразие тренировок', 'Бег в удовольствие', 'Здоровье и долголетие', 'Соревновательность', 'Быстрый прогресс', 'Без перегрузок', 'Общение / беговая группа', 'Гибкий график'];
 const BASE_OPTS = ['Стадион', 'Беговая дорожка', 'Парк / лес', 'Горы / трейлы', 'Шоссе / веломаршрут', 'Площадка для ОФП', 'Тренажёрный зал', 'Бассейн', 'Открытая вода', 'Велотренажёр', 'Резинки / эспандеры', 'Гантели / гири'];
 const TOOL_OPTS = ['Часы Garmin', 'Нагрудный пульсометр', 'МФР-ролл', 'Перкуссионный массажёр', 'Мячи для МФР', 'Кинезио-тейп', 'Умные весы'];
+const COACH_FOCUS = ['Бег', 'Трейл', 'Плавание', 'Вело', 'Триатлон', 'ОФП', 'Восстановление', 'Начинающие'];
 
 function toast(msg) {
   const t = $('#toast');
@@ -313,8 +317,29 @@ async function adminUnlink(id) {
   render();
 }
 
+async function saveCoachProfileForm() {
+  const focus = [...document.querySelectorAll('#cp-focus .tgl.on')].map((el) => el.textContent.trim());
+  const data = await api('/api/coach/profile', {
+    method: 'PUT',
+    body: JSON.stringify({
+      headline: $('#cp-headline')?.value.trim() || '',
+      city: $('#cp-city')?.value.trim() || '',
+      experience: $('#cp-experience')?.value.trim() || '',
+      bio: $('#cp-bio')?.value.trim() || '',
+      focus,
+    }),
+  });
+  state.coachProfile = data.profile;
+  toast('Профиль сохранён — ученики увидят его во вкладке «Тренеры»');
+  render();
+}
+
 async function loadCoach() {
-  const data = await api('/api/coach/athletes');
+  const [data, profile] = await Promise.all([
+    api('/api/coach/athletes'),
+    api('/api/coach/profile'),
+  ]);
+  state.coachProfile = profile.profile || null;
   state.athletes = data.athletes || [];
   const active = state.athletes.filter((a) => a.status === 'active');
   if (!state.selectedAthleteId && active[0]) state.selectedAthleteId = active[0].athlete_user_id;
@@ -376,6 +401,7 @@ async function removeAthlete(id) {
 
 async function selectAthlete(id) {
   state.selectedAthleteId = id;
+  state.coachMain = 'team';
   state.coachTab = 'plan';
   state.editingWorkoutId = null;
   await Promise.all([loadWorkouts(id), loadDossier(id)]);
@@ -676,14 +702,67 @@ function openReportModal(id, status) {
 
 function closeReportModal() {
   state.reportDraft = null;
+  state.viewingWorkoutId = null;
   const m = $('#modal');
   if (m) { m.hidden = true; m.innerHTML = ''; }
+}
+
+function workoutBits(w) {
+  const bits = [TYPE_LABEL[w.type] || w.type || ''];
+  if (w.km) bits.push(`${w.km} км`);
+  if (w.pace) bits.push(String(w.pace));
+  if (w.zone) bits.push(`зона ${w.zone}`);
+  if (w.dur) bits.push(`${w.dur} мин`);
+  return bits.filter(Boolean).join(' · ');
+}
+
+function formatWoDate(iso) {
+  try {
+    return parseIso(iso).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
+  } catch {
+    return iso || '';
+  }
+}
+
+function openWorkout(id) {
+  const w = state.workouts.find((x) => x.id === Number(id));
+  if (!w) return;
+  state.reportDraft = null;
+  state.viewingWorkoutId = w.id;
+  renderModal();
+}
+
+function workoutSheet(w) {
+  const reported = w.result
+    ? `<p class="muted">Отчёт: ${esc(w.result.status)}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}${w.result.km != null ? ' · ' + esc(w.result.km) + ' км' : ''}${w.result.fb ? ' · ' + esc(w.result.fb) : ''}</p>`
+    : `<div class="actions">
+        <button class="btn" data-act="report" data-id="${w.id}" data-status="completed">Выполнено</button>
+        <button class="btn" data-act="report" data-id="${w.id}" data-status="partial">Частично</button>
+        <button class="btn" data-act="report" data-id="${w.id}" data-status="missed">Пропуск</button>
+      </div>`;
+  return `<div class="sheet sheet-wide">
+    <h3>${esc(w.title || 'Тренировка')}</h3>
+    <p class="muted" style="margin:0">${esc(formatWoDate(w.date))} · ${esc(workoutBits(w))}</p>
+    <div class="wo-full">${w.desc ? esc(w.desc) : '<span class="muted">Тренер не добавил текстовое описание.</span>'}</div>
+    ${reported}
+    <div class="actions"><button class="btn ghost" data-act="close-report">Закрыть</button></div>
+  </div>`;
 }
 
 function renderModal() {
   const m = $('#modal');
   if (!m) return;
   const d = state.reportDraft;
+  if (!d && state.viewingWorkoutId) {
+    const w = state.workouts.find((x) => x.id === state.viewingWorkoutId);
+    if (!w) {
+      closeReportModal();
+      return;
+    }
+    m.hidden = false;
+    m.innerHTML = workoutSheet(w);
+    return;
+  }
   if (!d) {
     m.hidden = true;
     m.innerHTML = '';
@@ -1028,6 +1107,7 @@ function renderCoachPlan(selected) {
           <div>
             <b>${esc(w.date)}</b> · ${esc(w.title)}
             <div class="muted">${esc(TYPE_LABEL[w.type] || w.type)}${w.km ? ' · ' + w.km + ' км' : ''}${w.result ? ' · ' + w.result.status : ' · без отчёта'}</div>
+            ${w.desc ? `<div class="wo-preview">${esc(w.desc)}</div>` : ''}
           </div>
           <div class="row">
             <button class="btn" style="width:auto" data-act="edit-wo" data-id="${w.id}">Изменить</button>
@@ -1037,11 +1117,66 @@ function renderCoachPlan(selected) {
     </div>`;
 }
 
+function renderCoachResume() {
+  const p = state.coachProfile || {};
+  const focus = new Set(p.focus || []);
+  const focusOpts = [...COACH_FOCUS, ...(p.focus || []).filter((v) => !COACH_FOCUS.includes(v))];
+  return `<div class="panel">
+    <h3>Резюме для учеников</h3>
+    <p class="hint">Текст виден ученикам во вкладке «Тренеры», когда они выбирают, к кому пойти.</p>
+    <div class="stack">
+      <div><label>Коротко о себе</label><input id="cp-headline" maxlength="140" value="${esc(p.headline || '')}" placeholder="Подготовка к 10 км и полумарафону, акцент на технику"></div>
+      <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div><label>Город</label><input id="cp-city" maxlength="80" value="${esc(p.city || '')}" placeholder="Москва"></div>
+        <div><label>Опыт</label><input id="cp-experience" maxlength="80" value="${esc(p.experience || '')}" placeholder="8 лет, КМС"></div>
+      </div>
+      <div>
+        <label>Направления</label>
+        <div class="chips" id="cp-focus">
+          ${focusOpts.map((v) => `<button type="button" class="tgl ${focus.has(v) ? 'on' : ''}" data-act="toggle-chip">${esc(v)}</button>`).join('')}
+        </div>
+      </div>
+      <div><label>Резюме</label><textarea id="cp-bio" rows="10" maxlength="4000" placeholder="Для кого вы тренируете, как строите план, чего ждёте от ученика">${esc(p.bio || '')}</textarea></div>
+      <button class="btn primary" data-act="save-coach-profile" style="width:auto">Сохранить профиль</button>
+    </div>
+  </div>`;
+}
+
+function coachCardHtml(c, actionHtml) {
+  const name = c.first_name || c.username || 'Тренер';
+  const meta = [c.city, c.experience].filter(Boolean).join(' · ');
+  const focus = (c.focus || []).map((f) => `<span class="pill">${esc(f)}</span>`).join('');
+  return `<article class="coach-card">
+    <div class="coach-card-top">
+      <div>
+        <b>${esc(name)}</b> ${c.username ? `<span class="muted">@${esc(c.username)}</span>` : ''}
+        ${c.headline ? `<div class="headline">${esc(c.headline)}</div>` : ''}
+        ${meta ? `<div class="muted">${esc(meta)}</div>` : ''}
+        ${focus ? `<div class="pills">${focus}</div>` : ''}
+      </div>
+      ${actionHtml || ''}
+    </div>
+    ${c.bio ? `<div class="bio">${esc(c.bio)}</div>` : '<p class="muted" style="margin:8px 0 0">Резюме пока не заполнено</p>'}
+  </article>`;
+}
+
+function athleteReportRow(w) {
+  if (w.result) {
+    return `<span class="badge active">${esc(w.result.status)}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}</span>`;
+  }
+  return `<div class="row" style="margin-top:8px">
+    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="completed" title="Выполнено">✅</button>
+    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="partial" title="Частично">⚠️</button>
+    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="missed" title="Пропуск">❌</button>
+  </div>`;
+}
+
 function renderCoach() {
   const pending = state.athletes.filter((a) => a.status === 'pending');
   const active = state.athletes.filter((a) => a.status === 'active');
   const selected = active.find((a) => a.athlete_user_id === state.selectedAthleteId);
   const goal = selected && state.dossier ? goalLabel(state.dossier) : '';
+  const onMe = state.coachMain === 'me';
   return `<div class="layout">
     <aside>
       <div class="brand">
@@ -1067,14 +1202,19 @@ function renderCoach() {
     <main>
       <div class="head">
         <div>
-          <h1>${selected ? esc(selected.athlete?.first_name || selected.athlete?.username) : 'Тренерский кабинет'}</h1>
-          ${selected ? `<div class="muted">${esc(goal)}${selected.athlete?.username ? ' · @' + esc(selected.athlete.username) : ''}${state.dossier?.vdot ? ' · VDOT ' + vdFmt(state.dossier.vdot) : ''}</div>` : ''}
+          <h1>${onMe ? 'Мой профиль' : selected ? esc(selected.athlete?.first_name || selected.athlete?.username) : 'Тренерский кабинет'}</h1>
+          ${onMe ? '<div class="muted">Резюме, которое видят ученики при выборе тренера</div>' : selected ? `<div class="muted">${esc(goal)}${selected.athlete?.username ? ' · @' + esc(selected.athlete.username) : ''}${state.dossier?.vdot ? ' · VDOT ' + vdFmt(state.dossier.vdot) : ''}</div>` : ''}
         </div>
         <span class="grow"></span>
         <span class="badge active">тренер</span>
       </div>
 
-      <div class="panel">
+      <div class="tabs">
+        <button class="${onMe ? '' : 'on'}" data-act="coach-main-team">Ученики</button>
+        <button class="${onMe ? 'on' : ''}" data-act="coach-main-me">Мой профиль</button>
+      </div>
+
+      ${onMe ? renderCoachResume() : `<div class="panel">
         <h3>Добавить ученика по Telegram @username</h3>
         <div class="f2">
           <div><label>Username ученика</label><input id="athlete-user" placeholder="@username"></div>
@@ -1113,67 +1253,76 @@ function renderCoach() {
         ${state.coachTab === 'profile' ? renderCoachProfile(selected)
           : state.coachTab === 'stats' ? renderStats()
           : renderCoachPlan(selected)}
-      ` : '<div class="panel muted">Выберите ученика слева или добавьте нового.</div>'}
+      ` : '<div class="panel muted">Выберите ученика слева или добавьте нового.</div>'}`}
     </main>
   </div>`;
 }
 
 function renderAthletePlan() {
   const activeCoach = state.coaches.find((c) => c.status === 'active');
-  const pending = state.coaches.filter((c) => c.status === 'pending');
-  const linkedIds = new Set(state.coaches.map((c) => c.coach_user_id || c.coach?.id));
-  const directory = (state.coachDirectory || []).filter((c) => !linkedIds.has(c.id));
   const days = weekDays();
+  const from = days[0].iso;
+  const readable = [...state.workouts]
+    .filter((w) => w.date >= from)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const coachName = activeCoach?.coach?.first_name || activeCoach?.coach?.username;
   return `
+      <p class="hint" style="margin-top:0">${coachName ? `Тренер: ${esc(coachName)}. ` : 'Тренер не выбран — откройте вкладку «Тренеры». '}Нажмите на тренировку в календаре или читайте текст ниже целиком.</p>
       <div class="panel">
-        <h3>Мой тренер</h3>
-        ${activeCoach ? `<div class="list-item"><div><b>${esc(activeCoach.coach?.first_name || activeCoach.coach?.username)}</b> ${activeCoach.coach?.username ? '@' + esc(activeCoach.coach.username) : ''} <span class="badge active">связан</span></div></div>` : '<p class="muted">Тренер ещё не выбран — найдите ниже</p>'}
-        ${pending.map((c) => `<div class="list-item" style="margin-top:8px"><div><b>${esc(c.coach?.first_name || c.coach?.username)}</b> <span class="badge pending">заявка отправлена</span></div></div>`).join('')}
-      </div>
-
-      <div class="panel">
-        <h3>Найти тренера</h3>
-        <div class="f2" style="margin-bottom:10px">
-          <div><label>Поиск по имени или @username</label><input id="coach-search" value="${esc(state.coachSearch || '')}" placeholder="например антон или mromnv"></div>
-          <button class="btn" style="width:auto" data-act="search-coach">Найти</button>
-        </div>
-        <div class="f2">
-          <div><label>Или введите @username точно</label><input id="coach-user" placeholder="@username_тренера" list="coach-dir-list"></div>
-          <button class="btn primary" style="width:auto" data-act="find-coach">Отправить заявку</button>
-        </div>
-        <datalist id="coach-dir-list">${directory.map((c) => `<option value="@${esc(c.username)}">${esc(c.first_name || '')}</option>`).join('')}</datalist>
-        <div class="list" style="margin-top:12px">
-          ${directory.length ? directory.map((c) => `
-            <div class="list-item">
-              <div>
-                <b>${esc(c.first_name || c.username || 'Тренер')}</b> ${c.username ? '@' + esc(c.username) : ''}
-              </div>
-              <button class="btn primary" style="width:auto" data-act="pick-coach" data-id="${c.id}">Выбрать</button>
-            </div>`).join('') : `<p class="muted">${state.coachSearch ? 'Никого не найдено по запросу' : 'Пока нет тренеров в каталоге — введите @username вручную'}</p>`}
-        </div>
-        <p class="hint">После заявки тренер подтвердит связь в своём кабинете.</p>
-      </div>
-
-      <div class="panel">
-        <h3>Тренировки</h3>
+        <h3>Неделя</h3>
         <div class="week">
           ${days.map((d) => {
             const items = state.workouts.filter((w) => w.date === d.iso);
             return `<div class="day"><h4><span>${d.label}</span><span>${d.day}</span></h4>
               ${items.map((w) => `<div class="wo">
-                <b>${esc(w.title)}</b>
-                <small>${esc(w.type)}${w.km ? ' · ' + w.km + ' км' : ''}</small>
-                ${w.result ? `<span class="badge active">${esc(w.result.status)}${w.result.rpe != null ? ' · RPE ' + w.result.rpe : ''}</span>` : `
-                  <div class="row" style="margin-top:6px">
-                    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="completed" title="Выполнено">✅</button>
-                    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="partial" title="Частично">⚠️</button>
-                    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="missed" title="Пропуск">❌</button>
-                  </div>`}
+                <button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}">
+                  <b>${esc(w.title)}</b>
+                  <small>${esc(workoutBits(w))}</small>
+                  ${w.desc ? `<span class="wo-preview">${esc(w.desc)}</span>` : ''}
+                </button>
+                ${athleteReportRow(w)}
               </div>`).join('') || '<div class="muted" style="font-size:12px">Нет тренировок</div>'}
             </div>`;
           }).join('')}
         </div>
+      </div>
+      <div class="panel">
+        <h3>Описание тренировок</h3>
+        ${readable.length ? readable.map((w) => `<article class="wo-read">
+          <button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}">
+            <b>${esc(w.title)}</b>
+            <span class="muted">${esc(formatWoDate(w.date))} · ${esc(workoutBits(w))}</span>
+          </button>
+          <div class="wo-full">${w.desc ? esc(w.desc) : '<span class="muted">Тренер не добавил текстовое описание.</span>'}</div>
+          ${athleteReportRow(w)}
+        </article>`).join('') : '<p class="muted">С этой недели тренировок пока нет</p>'}
       </div>`;
+}
+
+function renderAthleteCoaches() {
+  const activeCoach = state.coaches.find((c) => c.status === 'active');
+  const pending = state.coaches.filter((c) => c.status === 'pending');
+  const linkedIds = new Set(state.coaches.map((c) => c.coach_user_id || c.coach?.id));
+  const directory = (state.coachDirectory || []).filter((c) => !linkedIds.has(c.id));
+  return `
+    ${activeCoach?.coach ? `<div class="panel"><h3>Мой тренер</h3>${coachCardHtml(activeCoach.coach, '<span class="badge active">связан</span>')}</div>` : '<div class="panel"><h3>Мой тренер</h3><p class="muted">Пока никого не выбрали — резюме тренеров ниже.</p></div>'}
+    ${pending.length ? `<div class="panel"><h3>Заявки</h3>${pending.map((c) => c.coach ? coachCardHtml(c.coach, '<span class="badge pending">заявка отправлена</span>') : '').join('')}</div>` : ''}
+    <div class="panel">
+      <h3>Все тренеры</h3>
+      <div class="f2" style="margin-bottom:10px">
+        <div><label>Поиск по имени, городу или тексту резюме</label><input id="coach-search" value="${esc(state.coachSearch || '')}" placeholder="например бег или антон"></div>
+        <button class="btn" style="width:auto" data-act="search-coach">Найти</button>
+      </div>
+      <div class="f2">
+        <div><label>Или @username точно</label><input id="coach-user" placeholder="@username_тренера" list="coach-dir-list"></div>
+        <button class="btn primary" style="width:auto" data-act="find-coach">Отправить заявку</button>
+      </div>
+      <datalist id="coach-dir-list">${directory.map((c) => `<option value="@${esc(c.username)}">${esc(c.first_name || '')}</option>`).join('')}</datalist>
+      <div class="coach-list">
+        ${directory.length ? directory.map((c) => coachCardHtml(c, `<button class="btn primary" style="width:auto" data-act="pick-coach" data-id="${c.id}">Выбрать</button>`)).join('') : `<p class="muted">${state.coachSearch ? 'Никого не найдено по запросу' : 'Пока нет тренеров в каталоге — введите @username вручную'}</p>`}
+      </div>
+      <p class="hint">После заявки тренер подтвердит связь в своём кабинете.</p>
+    </div>`;
 }
 
 function renderAthlete() {
@@ -1192,7 +1341,7 @@ function renderAthlete() {
     <main>
       <div class="head">
         <div>
-          <h1>${state.athleteTab === 'profile' ? 'Мои данные' : state.athleteTab === 'stats' ? 'Моя статистика' : 'Мой план'}</h1>
+          <h1>${state.athleteTab === 'profile' ? 'Мои данные' : state.athleteTab === 'stats' ? 'Моя статистика' : state.athleteTab === 'coaches' ? 'Тренеры' : 'Мой план'}</h1>
           <div class="muted">${esc(goal)}${state.dossier?.vdot ? ' · VDOT ' + vdFmt(state.dossier.vdot) : ''}</div>
         </div>
         <span class="grow"></span>
@@ -1201,11 +1350,13 @@ function renderAthlete() {
 
       <div class="tabs">
         <button class="${state.athleteTab === 'plan' ? 'on' : ''}" data-act="ath-tab-plan">План</button>
+        <button class="${state.athleteTab === 'coaches' ? 'on' : ''}" data-act="ath-tab-coaches">Тренеры</button>
         <button class="${state.athleteTab === 'stats' ? 'on' : ''}" data-act="ath-tab-stats">Статистика</button>
         <button class="${state.athleteTab === 'profile' ? 'on' : ''}" data-act="ath-tab-profile">Мои данные</button>
       </div>
       ${state.athleteTab === 'profile' ? renderCoachProfile({ athlete: state.user })
         : state.athleteTab === 'stats' ? renderStats()
+        : state.athleteTab === 'coaches' ? renderAthleteCoaches()
         : renderAthletePlan()}
     </main>
   </div>`;
@@ -1602,7 +1753,12 @@ async function handleAct(btn) {
       await loadDossier(state.selectedAthleteId);
       render();
     }
+    if (act === 'coach-main-team') { state.coachMain = 'team'; render(); }
+    if (act === 'coach-main-me') { state.coachMain = 'me'; render(); }
+    if (act === 'save-coach-profile') await saveCoachProfileForm();
+    if (act === 'open-wo') openWorkout(btn.dataset.id);
     if (act === 'ath-tab-plan') { state.athleteTab = 'plan'; render(); }
+    if (act === 'ath-tab-coaches') { state.athleteTab = 'coaches'; render(); }
     if (act === 'ath-tab-stats') { state.athleteTab = 'stats'; render(); }
     if (act === 'ath-tab-profile') {
       state.athleteTab = 'profile';

@@ -110,6 +110,36 @@ label { display:block; font-size:12px; font-weight:600; color:var(--muted); marg
 .wo.editing { border-color:var(--accent); background:var(--soft); box-shadow:0 0 0 1px var(--accent); }
 .wo b { display:block; font-size:13px; }
 .wo small { color:var(--muted); font-size:11px; }
+.wo-open {
+  display:block; width:100%; text-align:left; background:none; border:0;
+  color:inherit; padding:0; cursor:pointer;
+}
+.wo-preview {
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+  overflow:hidden; white-space:pre-wrap; font-size:12px; line-height:1.35; margin-top:4px;
+}
+.wo-full {
+  white-space:pre-wrap; word-break:break-word; line-height:1.5; font-size:15px; margin-top:10px;
+}
+.wo-read {
+  border-top:1px solid var(--line); padding:14px 0;
+}
+.wo-read:first-of-type { border-top:0; padding-top:0; }
+.wo-read .muted { display:block; font-size:12px; margin-top:2px; }
+.coach-list { display:grid; gap:10px; margin-top:12px; }
+.coach-card {
+  border:1px solid var(--line); border-radius:12px; background:var(--soft); padding:12px 14px;
+}
+.coach-card-top { display:flex; gap:12px; align-items:flex-start; justify-content:space-between; }
+.coach-card-top .btn, .coach-card-top .badge { flex-shrink:0; }
+.coach-card .headline { margin-top:4px; font-weight:600; }
+.coach-card .bio { white-space:pre-wrap; word-break:break-word; margin-top:10px; line-height:1.45; font-size:14px; }
+.pills { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.pill {
+  font-size:12px; font-weight:600; color:var(--text); background:var(--panel);
+  border:1px solid var(--line); border-radius:999px; padding:3px 8px;
+}
+.sheet-wide { width:min(640px, 100%); }
 .list-item.on-edit { border-color:var(--accent); }
 .theme-row { display:flex; gap:8px; margin:0 4px 12px; }
 .theme-btn {
@@ -197,6 +227,7 @@ svg.chart .pt { fill:var(--accent); }
   background:var(--panel); border:1px solid var(--line); border-radius:16px;
   padding:18px; width:min(420px,100%); box-shadow:var(--shadow); max-height:90vh; overflow:auto;
 }
+.modal .sheet.sheet-wide { width:min(640px, 100%); }
 .modal .sheet h3 { margin:0 0 6px; }
 .modal .actions { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
 .modal .actions .btn { width:auto; flex:1; margin:0; }

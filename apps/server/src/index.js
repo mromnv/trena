@@ -35,6 +35,7 @@ import {
   saveDossier,
   getCoachProfile,
   saveCoachProfile,
+  normalizeCoachPhoto,
   canCoachAccessAthlete,
   normUser,
   markBotVerified,
@@ -81,7 +82,7 @@ if (!BOT_TOKEN) {
 
 const app = express();
 app.use(cors({ origin: true, credentials: true }));
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 
 function sid(req) {
@@ -318,12 +319,26 @@ app.get('/api/coach/profile', requireAuth, requireRole('coach'), (req, res) => {
 
 app.put('/api/coach/profile', requireAuth, requireRole('coach'), (req, res) => {
   const body = req.body || {};
+  let photo;
+  if (body.photo !== undefined) {
+    try {
+      photo = normalizeCoachPhoto(body.photo);
+    } catch (e) {
+      const tooBig = e.code === 'photo_too_large';
+      return res.status(400).json({
+        ok: false,
+        error: e.code || 'bad_photo',
+        message: tooBig ? 'Фото слишком большое. Выберите снимок поменьше.' : 'Нужно изображение JPEG, PNG или WebP.',
+      });
+    }
+  }
   const profile = saveCoachProfile(req.user.id, {
     headline: body.headline,
     bio: body.bio,
     city: body.city,
     experience: body.experience,
     focus: body.focus,
+    photo,
   });
   res.json({ ok: true, profile });
 });

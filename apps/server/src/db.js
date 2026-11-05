@@ -342,7 +342,25 @@ function blankCoachProfile(userId) {
     city: '',
     experience: '',
     focus: [],
+    photo: '',
   };
+}
+
+/** data-URL фото тренера: jpeg/png/webp, до ~500 КБ */
+export function normalizeCoachPhoto(v) {
+  const s = String(v ?? '').trim().replace(/\s/g, '');
+  if (!s) return '';
+  if (s.length > 500000) {
+    const err = new Error('photo_too_large');
+    err.code = 'photo_too_large';
+    throw err;
+  }
+  if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(s)) {
+    const err = new Error('bad_photo');
+    err.code = 'bad_photo';
+    throw err;
+  }
+  return s;
 }
 
 export function getCoachProfile(userId) {
@@ -366,6 +384,7 @@ export function saveCoachProfile(userId, patch) {
     const list = Array.isArray(patch.focus) ? patch.focus : [];
     p.focus = list.map((x) => clip(x, 40)).filter(Boolean).slice(0, 12);
   }
+  if (patch.photo !== undefined) p.photo = normalizeCoachPhoto(patch.photo);
   p.updated_at = new Date().toISOString();
   save();
   return p;
@@ -385,6 +404,7 @@ export function publicCoach(u) {
     city: p.city || '',
     experience: p.experience || '',
     focus: Array.isArray(p.focus) ? p.focus : [],
+    photo: /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(p.photo || '') ? p.photo : '',
   };
 }
 

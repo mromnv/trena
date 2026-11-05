@@ -334,6 +334,60 @@ export function publicUser(u) {
   };
 }
 
+function blankCoachProfile(userId) {
+  return {
+    user_id: userId,
+    headline: '',
+    bio: '',
+    city: '',
+    experience: '',
+    focus: [],
+  };
+}
+
+export function getCoachProfile(userId) {
+  if (!db.coachProfiles) db.coachProfiles = [];
+  return db.coachProfiles.find((x) => x.user_id === userId) || blankCoachProfile(userId);
+}
+
+export function saveCoachProfile(userId, patch) {
+  if (!db.coachProfiles) db.coachProfiles = [];
+  let p = db.coachProfiles.find((x) => x.user_id === userId);
+  if (!p) {
+    p = blankCoachProfile(userId);
+    db.coachProfiles.push(p);
+  }
+  const clip = (s, n) => String(s ?? '').trim().slice(0, n);
+  if (patch.headline !== undefined) p.headline = clip(patch.headline, 140);
+  if (patch.bio !== undefined) p.bio = clip(patch.bio, 4000);
+  if (patch.city !== undefined) p.city = clip(patch.city, 80);
+  if (patch.experience !== undefined) p.experience = clip(patch.experience, 80);
+  if (patch.focus !== undefined) {
+    const list = Array.isArray(patch.focus) ? patch.focus : [];
+    p.focus = list.map((x) => clip(x, 40)).filter(Boolean).slice(0, 12);
+  }
+  p.updated_at = new Date().toISOString();
+  save();
+  return p;
+}
+
+/** Карточка тренера для ученика: имя + резюме, без telegram id */
+export function publicCoach(u) {
+  if (!u) return null;
+  const p = getCoachProfile(u.id);
+  return {
+    id: u.id,
+    username: u.username || '',
+    first_name: u.first_name || '',
+    last_name: u.last_name || '',
+    headline: p.headline || '',
+    bio: p.bio || '',
+    city: p.city || '',
+    experience: p.experience || '',
+    focus: Array.isArray(p.focus) ? p.focus : [],
+  };
+}
+
 export function findLink(coachId, athleteId) {
   return db.links.find(
     (l) => l.coach_user_id === coachId && l.athlete_user_id === athleteId && l.status !== 'removed'
@@ -354,7 +408,7 @@ export function listCoachesForAthlete(athleteId) {
     .filter((l) => l.athlete_user_id === athleteId && l.status !== 'removed')
     .map((l) => ({
       ...l,
-      coach: publicUser(findUserById(l.coach_user_id)),
+      coach: publicCoach(findUserById(l.coach_user_id)),
     }));
 }
 
@@ -362,12 +416,7 @@ export function listCoachesForAthlete(athleteId) {
 export function listCoachDirectory() {
   return db.users
     .filter((u) => userProfiles(u.id).includes('coach'))
-    .map((u) => ({
-      id: u.id,
-      username: u.username || '',
-      first_name: u.first_name || '',
-      last_name: u.last_name || '',
-    }))
+    .map((u) => publicCoach(u))
     .sort((a, b) =>
       String(a.first_name || a.username).localeCompare(String(b.first_name || b.username), 'ru')
     );

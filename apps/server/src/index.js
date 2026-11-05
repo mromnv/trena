@@ -33,6 +33,8 @@ import {
   addChatMessage,
   getDossier,
   saveDossier,
+  getCoachProfile,
+  saveCoachProfile,
   canCoachAccessAthlete,
   normUser,
   markBotVerified,
@@ -310,6 +312,22 @@ app.post('/api/coach/athletes/:linkId/reject', requireAuth, requireRole('coach')
   res.json({ ok: true });
 });
 
+app.get('/api/coach/profile', requireAuth, requireRole('coach'), (req, res) => {
+  res.json({ ok: true, profile: getCoachProfile(req.user.id) });
+});
+
+app.put('/api/coach/profile', requireAuth, requireRole('coach'), (req, res) => {
+  const body = req.body || {};
+  const profile = saveCoachProfile(req.user.id, {
+    headline: body.headline,
+    bio: body.bio,
+    city: body.city,
+    experience: body.experience,
+    focus: body.focus,
+  });
+  res.json({ ok: true, profile });
+});
+
 app.delete('/api/coach/athletes/:linkId', requireAuth, requireRole('coach'), (req, res) => {
   const link = removeLink(Number(req.params.linkId), req.user.id);
   if (!link) return res.status(404).json({ ok: false, error: 'not_found' });
@@ -322,7 +340,7 @@ app.get('/api/athlete/coaches', requireAuth, requireRole('athlete'), (req, res) 
   let directory = listCoachDirectory().filter((c) => c.id !== req.user.id);
   if (q) {
     directory = directory.filter((c) => {
-      const hay = `${c.username} ${c.first_name} ${c.last_name}`.toLowerCase();
+      const hay = `${c.username} ${c.first_name} ${c.last_name} ${c.headline || ''} ${c.bio || ''} ${c.city || ''} ${c.experience || ''} ${(c.focus || []).join(' ')}`.toLowerCase();
       return hay.includes(q);
     });
   }

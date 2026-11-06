@@ -335,6 +335,16 @@ svg.chart .pt { fill:var(--accent); }
 .busy-box { display:grid; gap:8px; margin:0 0 12px; }
 .busy-box .check { display:flex; gap:8px; align-items:center; font-size:14px; font-weight:700; color:var(--text); }
 .busy-banner { margin:0 0 12px; color:var(--warn); font-weight:700; }
+.taper { margin:0 0 12px; padding:10px 12px; border-radius:12px; background:color-mix(in srgb, var(--warn) 18%, var(--panel)); font-weight:700; }
+.race-flag, .cal-race, .race-line { display:block; font-size:11px; font-weight:700; color:var(--accent); line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.race-line { font-size:14px; margin:0 0 10px; white-space:normal; }
+.race-flag.a, .cal-race.a, .race-line.a { color:var(--warn); }
+.mini-day.race-a span { box-shadow:inset 0 0 0 1.5px var(--warn); border-radius:50%; }
+.mini-day.race span { box-shadow:inset 0 0 0 1.5px var(--accent); border-radius:50%; }
+.group-line { display:flex; flex-wrap:wrap; gap:8px 12px; align-items:center; margin:0 0 12px; }
+.group-line > span { font-size:12px; font-weight:700; color:var(--muted); }
+.group-box { display:flex; flex-wrap:wrap; gap:6px 12px; }
+.group-box .check { display:flex; gap:6px; align-items:center; font-size:13px; font-weight:600; }
 .cal-nav.today { width:auto; }
 .ex-head, .ex-row { display:grid; grid-template-columns:1.5fr .7fr .7fr .8fr auto; gap:6px; align-items:center; }
 .ex-head { font-size:11px; color:var(--muted); font-weight:700; margin-bottom:4px; }

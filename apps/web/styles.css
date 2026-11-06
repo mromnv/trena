@@ -328,6 +328,14 @@ svg.chart .pt { fill:var(--accent); }
   border-radius:14px; padding:14px 16px 16px;
 }
 .day-sheet h3 { margin:0 0 10px; font-size:16px; text-transform:capitalize; }
+.cal-week .day.busy, .cal-day.busy { background: color-mix(in srgb, var(--warn) 12%, var(--panel)); }
+.busy-flag { font-size:11px; font-weight:700; color:var(--warn); line-height:1.3; }
+.mini-day.busy span { color:var(--warn); font-weight:800; }
+.wo.dragging, .cal-wo.dragging { opacity:.45; }
+.busy-box { display:grid; gap:8px; margin:0 0 12px; }
+.busy-box .check { display:flex; gap:8px; align-items:center; font-size:14px; font-weight:700; color:var(--text); }
+.busy-banner { margin:0 0 12px; color:var(--warn); font-weight:700; }
+.cal-nav.today { width:auto; }
 .ex-head, .ex-row { display:grid; grid-template-columns:1.5fr .7fr .7fr .8fr auto; gap:6px; align-items:center; }
 .ex-head { font-size:11px; color:var(--muted); font-weight:700; margin-bottom:4px; }
 .ex-row { margin-bottom:6px; }

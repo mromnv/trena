@@ -28,6 +28,7 @@ const state = {
   planZoom: 'week',
   planDay: null,
   dayNotes: [],
+  busyDays: [],
   statsPeriod: 'week', // week | month | season
   editingWorkoutId: null,
   dossier: null,
@@ -412,6 +413,7 @@ async function loadCoach() {
       loadWorkouts(state.selectedAthleteId),
       loadDossier(state.selectedAthleteId),
       loadNotes(state.selectedAthleteId),
+      loadBusy(state.selectedAthleteId),
     ]);
   }
 }
@@ -421,7 +423,25 @@ async function loadAthlete() {
   const data = await api(`/api/athlete/coaches${q}`);
   state.coaches = data.coaches || [];
   state.coachDirectory = data.directory || [];
-  await Promise.all([loadWorkouts(state.user.id), loadDossier(state.user.id), loadNotes(state.user.id)]);
+  await Promise.all([
+    loadWorkouts(state.user.id),
+    loadDossier(state.user.id),
+    loadNotes(state.user.id),
+    loadBusy(state.user.id),
+  ]);
+}
+
+async function loadBusy(athleteId) {
+  if (!athleteId) {
+    state.busyDays = [];
+    return;
+  }
+  const data = await api(`/api/busy?athleteId=${athleteId}`);
+  state.busyDays = data.days || [];
+}
+
+function busyOn(iso) {
+  return (state.busyDays || []).find((b) => b.date === iso) || null;
 }
 
 async function loadNotes(athleteId) {
@@ -478,7 +498,7 @@ async function selectAthlete(id) {
   state.coachMain = 'team';
   state.coachTab = 'plan';
   state.editingWorkoutId = null;
-  await Promise.all([loadWorkouts(id), loadDossier(id), loadNotes(id)]);
+  await Promise.all([loadWorkouts(id), loadDossier(id), loadNotes(id), loadBusy(id)]);
   render();
 }
 
@@ -723,6 +743,47 @@ function startEditWorkout(id) {
 function cancelEditWorkout() {
   state.editingWorkoutId = null;
   render();
+}
+
+async function moveWorkoutTo(id, date) {
+  if (!id || !date || state.role !== 'coach') return;
+  const w = state.workouts.find((x) => x.id === Number(id));
+  if (!w || w.date === date) return;
+  await api(`/api/workouts/${id}/move`, { method: 'POST', body: JSON.stringify({ date }) });
+  await loadWorkouts(state.selectedAthleteId);
+  state.planDay = date;
+  state.planCursor = date;
+  render();
+  toast('Тренировка перенесена');
+}
+
+async function copyWeekForward() {
+  const athleteId = state.selectedAthleteId;
+  if (!athleteId) return toast('Выберите ученика');
+  const from = weekDays()[0].iso;
+  const data = await api('/api/workouts/copy-week', {
+    method: 'POST',
+    body: JSON.stringify({ athleteId, from }),
+  });
+  await loadWorkouts(athleteId);
+  if (data.to) {
+    state.planCursor = data.to;
+    state.planDay = data.to;
+  }
+  render();
+  toast(data.count ? `Скопировано тренировок: ${data.count}` : 'На этой неделе нет тренировок');
+}
+
+async function saveBusyDay() {
+  const date = state.planDay || isoDate(new Date());
+  const busy = !!$('#busy-flag')?.checked;
+  await api('/api/busy', {
+    method: 'PUT',
+    body: JSON.stringify({ date, busy, note: $('#busy-note')?.value.trim() || '' }),
+  });
+  await loadBusy(state.user.id);
+  render();
+  toast(busy ? 'День отмечен: не могу' : 'День снова свободен');
 }
 
 async function savePlanNote() {
@@ -1442,7 +1503,7 @@ function renderAthletePlan() {
         </article>`).join('') : '<p class="muted">На этой неделе тренировок нет</p>'}
       </div>` : '';
   return `
-      <p class="hint" style="margin-top:0">${coachName ? `Тренер: ${esc(coachName)}. ` : 'Тренер не выбран — откройте вкладку «Тренеры». '}Минус уменьшает календарь: неделя, месяц, год. Нажмите день, чтобы прочитать тренировку и заметку.</p>
+      ${coachName ? `<p class="hint" style="margin-top:0">Тренер: ${esc(coachName)}</p>` : '<p class="hint" style="margin-top:0">Тренер не выбран — откройте вкладку «Тренеры».</p>'}
       ${renderCalendar('athlete')}
       ${weekCopy}`;
 }
@@ -1574,7 +1635,10 @@ function dayWorkouts(iso) {
   return state.workouts.filter((w) => w.date === iso);
 }
 
-function calBar() {
+function calBar(role) {
+  const copy = role === 'coach' && (state.planZoom || 'week') === 'week'
+    ? `<button type="button" class="cal-nav today" data-act="copy-week">На следующую</button>`
+    : '';
   return `<div class="cal-bar">
     <div class="cal-zoom">
       <button type="button" class="cal-nav" data-act="plan-zoom-in" title="Крупнее">+</button>
@@ -1585,13 +1649,14 @@ function calBar() {
       <strong class="cal-title">${esc(planTitle())}</strong>
       <button type="button" class="cal-nav" data-act="plan-next" title="Вперёд">›</button>
     </div>
+    ${copy}
     <button type="button" class="cal-nav today" data-act="plan-today">Сегодня</button>
   </div>`;
 }
 
 function weekWorkoutHtml(w, role) {
   if (role === 'coach') {
-    return `<button type="button" class="wo ${w.id === state.editingWorkoutId ? 'editing' : ''}" data-act="edit-wo" data-id="${w.id}">
+    return `<button type="button" class="wo ${w.id === state.editingWorkoutId ? 'editing' : ''}" draggable="true" data-drag-wo="${w.id}" data-act="edit-wo" data-id="${w.id}">
       <b>${esc(w.title)}</b>
       <small>${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.pace ? ' · ' + esc(w.pace) : ''}</small>
     </button>`;
@@ -1609,18 +1674,20 @@ function renderWeekGrid(role) {
     const items = dayWorkouts(day.iso);
     const note = noteFor(day.iso);
     const preview = (note?.coach_text || note?.athlete_text || '').trim();
-    return `<div class="day ${day.iso === selected ? 'sel' : ''}">
+    const busy = busyOn(day.iso);
+    return `<div class="day ${day.iso === selected ? 'sel' : ''} ${busy ? 'busy' : ''}" data-date="${day.iso}">
       <button type="button" class="day-h" data-act="cal-day" data-date="${day.iso}">
         <span class="day-lab">${day.label}</span>
         <span class="day-num ${day.iso === today ? 'on' : ''}">${day.day}</span>
       </button>
-      <div class="day-body">${items.map((w) => weekWorkoutHtml(w, role)).join('') || '<div class="day-empty">свободно</div>'}</div>
+      ${busy ? `<div class="busy-flag">не могу${busy.note ? ' · ' + esc(busy.note) : ''}</div>` : ''}
+      <div class="day-body">${items.map((w) => weekWorkoutHtml(w, role)).join('')}</div>
       ${preview ? `<div class="day-note">${esc(preview)}</div>` : ''}
     </div>`;
   }).join('')}</div></div>`;
 }
 
-function renderMonthGrid() {
+function renderMonthGrid(role) {
   const anchor = planAnchor();
   const year = anchor.getFullYear();
   const month = anchor.getMonth();
@@ -1633,11 +1700,16 @@ function renderMonthGrid() {
       const iso = isoDate(d);
       const items = dayWorkouts(iso);
       const outside = d.getMonth() !== month;
-      return `<button type="button" class="cal-day ${outside ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.planDay ? 'sel' : ''}" data-act="cal-day" data-date="${iso}">
+      const busy = busyOn(iso);
+      const chips = items.slice(0, 2).map((w) => role === 'coach'
+        ? `<span class="cal-wo" draggable="true" data-drag-wo="${w.id}">${esc(w.title)}</span>`
+        : `<span class="cal-wo">${esc(w.title)}</span>`).join('');
+      return `<div class="cal-day ${outside ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.planDay ? 'sel' : ''} ${busy ? 'busy' : ''}" data-act="cal-day" data-date="${iso}">
         <span class="n">${d.getDate()}${hasNote(iso) ? '<i class="note-dot"></i>' : ''}</span>
-        ${items.slice(0, 2).map((w) => `<span class="cal-wo">${esc(w.title)}</span>`).join('')}
+        ${busy ? '<span class="busy-flag">не могу</span>' : ''}
+        ${chips}
         ${items.length > 2 ? `<span class="cal-more">+${items.length - 2}</span>` : ''}
-      </button>`;
+      </div>`;
     }).join('')}</div>
   </div>`;
 }
@@ -1655,7 +1727,8 @@ function renderYearGrid() {
       <div class="mini-grid">${'<span></span>'.repeat(pad)}${cells.map((d) => {
         const iso = isoDate(d);
         const items = dayWorkouts(iso);
-        return `<button type="button" class="mini-day ${items.length ? 'has' : ''} ${hasNote(iso) ? 'note' : ''} ${iso === today ? 'today' : ''}" data-act="cal-day" data-date="${iso}" title="${esc(items.map((w) => w.title).join(', ') || d.getDate())}"><span>${d.getDate()}</span></button>`;
+        const busy = busyOn(iso);
+        return `<button type="button" class="mini-day ${items.length ? 'has' : ''} ${hasNote(iso) ? 'note' : ''} ${busy ? 'busy' : ''} ${iso === today ? 'today' : ''}" data-act="cal-day" data-date="${iso}" title="${esc([busy ? 'не могу' : '', ...items.map((w) => w.title)].filter(Boolean).join(', ') || d.getDate())}"><span>${d.getDate()}</span></button>`;
       }).join('')}</div>
     </div>`;
   }).join('')}</div>`;
@@ -1668,8 +1741,17 @@ function renderDaySheet(role) {
   const mine = role === 'coach' ? (note.coach_text || '') : (note.athlete_text || '');
   const other = role === 'coach' ? (note.athlete_text || '') : (note.coach_text || '');
   const otherLabel = role === 'coach' ? 'Заметка ученика' : 'Заметка тренера';
+  const busy = busyOn(date);
+  const busyBox = role === 'athlete'
+    ? `<div class="busy-box">
+        <label class="check"><input id="busy-flag" type="checkbox" ${busy ? 'checked' : ''}> Не могу тренироваться в этот день</label>
+        <input id="busy-note" maxlength="200" placeholder="Причина, если нужно" value="${esc(busy?.note || '')}">
+        <button type="button" class="btn" data-act="save-busy" style="width:auto">Сохранить занятость</button>
+      </div>`
+    : (busy ? `<p class="busy-banner">Ученик не может тренироваться${busy.note ? ': ' + esc(busy.note) : ''}</p>` : '');
   return `<div class="day-sheet">
     <h3>${esc(formatWoDate(date))}</h3>
+    ${busyBox}
     ${items.length ? items.map((w) => `<article class="wo-read">
       ${role === 'coach'
         ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}</span></button>`
@@ -1686,9 +1768,9 @@ function renderDaySheet(role) {
 
 function renderCalendar(role) {
   const zoom = state.planZoom || 'week';
-  const body = zoom === 'year' ? renderYearGrid() : zoom === 'month' ? renderMonthGrid() : renderWeekGrid(role);
+  const body = zoom === 'year' ? renderYearGrid() : zoom === 'month' ? renderMonthGrid(role) : renderWeekGrid(role);
   return `<div class="panel cal-panel">
-    ${calBar()}
+    ${calBar(role)}
     ${body}
     ${renderDaySheet(role)}
   </div>`;
@@ -2133,6 +2215,8 @@ async function handleAct(btn) {
       render();
     }
     if (act === 'save-note') await savePlanNote();
+    if (act === 'save-busy') await saveBusyDay();
+    if (act === 'copy-week') await copyWeekForward();
     if (act === 'add-wo') await saveWorkoutForm();
     if (act === 'edit-wo') startEditWorkout(Number(btn.dataset.id));
     if (act === 'cancel-edit-wo') cancelEditWorkout();
@@ -2146,6 +2230,35 @@ async function handleAct(btn) {
 app.addEventListener('click', (e) => {
   const btn = e.target.closest('[data-act]');
   if (btn) handleAct(btn);
+});
+
+app.addEventListener('dragstart', (e) => {
+  const el = e.target.closest('[data-drag-wo]');
+  if (!el) return;
+  e.dataTransfer.setData('text/plain', String(el.dataset.dragWo));
+  e.dataTransfer.effectAllowed = 'move';
+  el.classList.add('dragging');
+});
+
+app.addEventListener('dragend', (e) => {
+  e.target.closest('[data-drag-wo]')?.classList.remove('dragging');
+});
+
+app.addEventListener('dragover', (e) => {
+  if (state.role !== 'coach') return;
+  if (!e.target.closest('[data-date]')) return;
+  if (![...e.dataTransfer.types].includes('text/plain')) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+});
+
+app.addEventListener('drop', (e) => {
+  const day = e.target.closest('[data-date]');
+  if (!day || state.role !== 'coach') return;
+  const id = Number(e.dataTransfer.getData('text/plain'));
+  if (!id || !day.dataset.date) return;
+  e.preventDefault();
+  moveWorkoutTo(id, day.dataset.date).catch((err) => toast(err.message || 'Ошибка'));
 });
 
 app.addEventListener('change', (e) => {

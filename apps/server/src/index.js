@@ -31,6 +31,12 @@ import {
   deleteWorkout,
   listDayNotes,
   saveDayNote,
+  moveWorkout,
+  copyWorkoutsWeek,
+  listBusy,
+  setBusy,
+  workoutsOnDate,
+  claimReminderDay,
   getChat,
   addChatMessage,
   getDossier,
@@ -622,6 +628,54 @@ app.put('/api/notes', requireAuth, (req, res) => {
   res.json({ ok: true, note });
 });
 
+function coachOwnsAthlete(req, athleteId) {
+  return listAthletesForCoach(req.user.id).some(
+    (l) => l.athlete_user_id === athleteId && l.status === 'active'
+  );
+}
+
+app.post('/api/workouts/:id/move', requireAuth, requireRole('coach'), (req, res) => {
+  const date = String(req.body?.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ ok: false, error: 'bad_date' });
+  const row = moveWorkout(Number(req.params.id), req.user.id, date);
+  if (!row) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true, workout: row });
+});
+
+app.post('/api/workouts/copy-week', requireAuth, requireRole('coach'), (req, res) => {
+  const athleteId = Number(req.body?.athleteId);
+  const from = String(req.body?.from || '');
+  if (!athleteId || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    return res.status(400).json({ ok: false, error: 'bad_request' });
+  }
+  if (!coachOwnsAthlete(req, athleteId)) return res.status(403).json({ ok: false, error: 'forbidden' });
+  const { created, to } = copyWorkoutsWeek({ coachId: req.user.id, athleteId, from });
+  res.json({ ok: true, count: created.length, to });
+});
+
+app.get('/api/busy', requireAuth, (req, res) => {
+  const athleteId = Number(req.query.athleteId || (req.session.role === 'athlete' ? req.user.id : 0));
+  if (!athleteId) return res.status(400).json({ ok: false, error: 'athleteId_required' });
+  if (req.session.role === 'coach') {
+    if (!coachOwnsAthlete(req, athleteId)) return res.status(403).json({ ok: false, error: 'forbidden' });
+  } else if (req.user.id !== athleteId) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+  res.json({ ok: true, days: listBusy(athleteId) });
+});
+
+app.put('/api/busy', requireAuth, requireRole('athlete'), (req, res) => {
+  const date = String(req.body?.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ ok: false, error: 'bad_date' });
+  const row = setBusy({
+    athleteId: req.user.id,
+    date,
+    busy: !!req.body?.busy,
+    note: req.body?.note || '',
+  });
+  res.json({ ok: true, day: row });
+});
+
 app.delete('/api/workouts/:id', requireAuth, requireRole('coach'), (req, res) => {
   const ok = deleteWorkout(Number(req.params.id), req.user.id);
   if (!ok) return res.status(404).json({ ok: false, error: 'not_found' });
@@ -755,9 +809,64 @@ if (fs.existsSync(webDist)) {
   });
 }
 
+function workoutReminderText(w) {
+  const lines = [`<b>${escapeHtml(w.title || 'Тренировка')}</b>`];
+  const meta = [];
+  if (w.km) meta.push(`${w.km} км`);
+  if (w.pace) meta.push(String(w.pace));
+  if (w.dur) meta.push(`${w.dur} мин`);
+  if (meta.length) lines.push(escapeHtml(meta.join(' · ')));
+  const extra = [];
+  for (const e of w.exercises || []) {
+    const bits = [e.name, e.sets && `${e.sets} подх.`, e.reps && `${e.reps} повт.`, e.rest && `отдых ${e.rest}`].filter(Boolean);
+    if (bits.length) extra.push(bits.join(' · '));
+  }
+  if (w.desc) extra.push(String(w.desc));
+  if (extra.length) lines.push(escapeHtml(extra.join('\n')));
+  return lines.join('\n');
+}
+
+function moscowStamp() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const g = (t) => parts.find((p) => p.type === t)?.value || '';
+  return { date: `${g('year')}-${g('month')}-${g('day')}`, hour: Number(g('hour')) };
+}
+
+async function sendMorningReminders() {
+  if (!BOT_TOKEN || MODE !== 'cloud') return;
+  const { date, hour } = moscowStamp();
+  if (!date || Number.isNaN(hour) || hour < 8 || hour >= 12) return;
+  if (!claimReminderDay(date)) return;
+  const by = new Map();
+  for (const w of workoutsOnDate(date)) {
+    if (!by.has(w.athlete_user_id)) by.set(w.athlete_user_id, []);
+    by.get(w.athlete_user_id).push(w);
+  }
+  for (const [athleteId, items] of by) {
+    const user = findUserById(athleteId);
+    if (!user?.telegram_id) continue;
+    const real = items.filter((w) => w.type !== 'rest');
+    const send = real.length ? real : items.slice(0, 1);
+    const text = `Тренировка на сегодня\n\n${send.map(workoutReminderText).join('\n\n')}`.slice(0, 3500);
+    await notifyUser(BOT_TOKEN, user.telegram_id, text);
+  }
+}
+
 app.listen(PORT, '0.0.0.0', async () => {
   console.log(`TRENA server http://0.0.0.0:${PORT}`);
   console.log(`Bot @${BOT_USERNAME} · mode=${MODE} · token=${BOT_TOKEN ? 'yes' : 'NO'}`);
+  if (MODE === 'cloud' && BOT_TOKEN) {
+    const tick = () => sendMorningReminders().catch((e) => console.error('[remind]', e.message));
+    setInterval(tick, 10 * 60 * 1000);
+    tick();
+  }
   if (!BOT_TOKEN) {
     console.error('[FATAL] Без BOT_TOKEN вход через Telegram не работает. Railway → Variables → BOT_TOKEN');
     return;

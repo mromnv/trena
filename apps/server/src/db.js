@@ -15,6 +15,8 @@ function empty() {
     links: [],
     workouts: [],
     dayNotes: [],
+    busyDays: [],
+    reminderDays: [],
     chats: [],
     loginTokens: [],
     sessions: [],
@@ -536,6 +538,90 @@ export function saveDayNote({ athleteId, date, role, text }) {
   n.updated_at = new Date().toISOString();
   save();
   return n;
+}
+
+export function moveWorkout(workoutId, coachId, date) {
+  const w = db.workouts.find((x) => x.id === workoutId && x.coach_user_id === coachId);
+  if (!w) return null;
+  w.date = date;
+  w.updated_at = new Date().toISOString();
+  save();
+  return w;
+}
+
+function shiftIso(iso, days) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return dt.toISOString().slice(0, 10);
+}
+
+export function copyWorkoutsWeek({ coachId, athleteId, from }) {
+  const end = shiftIso(from, 6);
+  const list = db.workouts.filter(
+    (w) => w.coach_user_id === coachId && w.athlete_user_id === athleteId && w.date >= from && w.date <= end
+  );
+  const created = list.map((w) => {
+    const row = {
+      id: id(),
+      coach_user_id: coachId,
+      athlete_user_id: athleteId,
+      date: shiftIso(w.date, 7),
+      type: w.type,
+      typeLabel: w.typeLabel || '',
+      title: w.title,
+      desc: w.desc || '',
+      km: w.km ?? null,
+      pace: w.pace ?? null,
+      zone: w.zone ?? null,
+      dur: w.dur ?? null,
+      exercises: Array.isArray(w.exercises) ? w.exercises : [],
+      result: null,
+      created_at: new Date().toISOString(),
+    };
+    db.workouts.push(row);
+    return row;
+  });
+  if (created.length) save();
+  return { created, to: shiftIso(from, 7) };
+}
+
+export function listBusy(athleteId) {
+  if (!db.busyDays) db.busyDays = [];
+  return db.busyDays.filter((b) => b.athlete_user_id === athleteId);
+}
+
+export function setBusy({ athleteId, date, busy, note }) {
+  if (!db.busyDays) db.busyDays = [];
+  const i = db.busyDays.findIndex((b) => b.athlete_user_id === athleteId && b.date === date);
+  if (!busy) {
+    if (i >= 0) {
+      db.busyDays.splice(i, 1);
+      save();
+    }
+    return null;
+  }
+  const row = {
+    athlete_user_id: athleteId,
+    date,
+    note: String(note || '').trim().slice(0, 200),
+  };
+  if (i >= 0) db.busyDays[i] = row;
+  else db.busyDays.push(row);
+  save();
+  return row;
+}
+
+export function workoutsOnDate(date) {
+  return db.workouts.filter((w) => w.date === date);
+}
+
+export function claimReminderDay(date) {
+  if (!db.reminderDays) db.reminderDays = [];
+  if (db.reminderDays.includes(date)) return false;
+  db.reminderDays.push(date);
+  if (db.reminderDays.length > 90) db.reminderDays = db.reminderDays.slice(-90);
+  save();
+  return true;
 }
 
 export function deleteWorkout(workoutId, coachId) {

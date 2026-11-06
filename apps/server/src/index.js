@@ -29,6 +29,8 @@ import {
   getWorkouts,
   saveWorkout,
   deleteWorkout,
+  listDayNotes,
+  saveDayNote,
   getChat,
   addChatMessage,
   getDossier,
@@ -547,18 +549,31 @@ app.post('/api/workouts', requireAuth, requireRole('coach'), (req, res) => {
     const existing = getWorkouts(athleteId, req.user.id).find((w) => w.id === workoutId);
     if (!existing) return res.status(404).json({ ok: false, error: 'not_found' });
   }
+  const types = new Set(['running', 'swimming', 'cycling', 'strength', 'recovery', 'rest', 'sbu', 'hurdles', 'custom']);
+  const type = types.has(body.type) ? body.type : 'custom';
+  const cleanExercises = (list) => {
+    if (!Array.isArray(list)) return [];
+    return list.slice(0, 40).map((e) => ({
+      name: String(e?.name || '').trim().slice(0, 80),
+      sets: String(e?.sets ?? '').trim().slice(0, 12),
+      reps: String(e?.reps ?? '').trim().slice(0, 24),
+      rest: String(e?.rest || '').trim().slice(0, 24),
+    })).filter((e) => e.name || e.sets || e.reps || e.rest);
+  };
   const patch = {
     id: workoutId,
     coach_user_id: req.user.id,
     athlete_user_id: athleteId,
     date: body.date,
-    type: body.type || 'running',
+    type,
+    typeLabel: type === 'custom' ? String(body.typeLabel || '').trim().slice(0, 40) : '',
     title: body.title || 'Тренировка',
     desc: body.desc || '',
     km: body.km ?? null,
     pace: body.pace ?? null,
     zone: body.zone ?? null,
     dur: body.dur ?? null,
+    exercises: type === 'strength' ? cleanExercises(body.exercises) : [],
   };
   // result только если явно передали (иначе при правке плана отчёт сохраняется)
   if (body.result !== undefined) patch.result = body.result;
@@ -570,6 +585,41 @@ app.post('/api/workouts', requireAuth, requireRole('coach'), (req, res) => {
   }
   const row = saveWorkout(patch);
   res.json({ ok: true, workout: row });
+});
+
+app.get('/api/notes', requireAuth, (req, res) => {
+  const athleteId = Number(req.query.athleteId || (req.session.role === 'athlete' ? req.user.id : 0));
+  if (!athleteId) return res.status(400).json({ ok: false, error: 'athleteId_required' });
+  if (req.session.role === 'coach') {
+    const ok = listAthletesForCoach(req.user.id).some(
+      (l) => l.athlete_user_id === athleteId && l.status === 'active'
+    );
+    if (!ok) return res.status(403).json({ ok: false, error: 'forbidden' });
+  } else if (req.user.id !== athleteId) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+  res.json({ ok: true, notes: listDayNotes(athleteId) });
+});
+
+app.put('/api/notes', requireAuth, (req, res) => {
+  const athleteId = Number(req.body?.athleteId || (req.session.role === 'athlete' ? req.user.id : 0));
+  const date = String(req.body?.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ ok: false, error: 'bad_date' });
+  if (req.session.role === 'coach') {
+    const ok = listAthletesForCoach(req.user.id).some(
+      (l) => l.athlete_user_id === athleteId && l.status === 'active'
+    );
+    if (!ok) return res.status(403).json({ ok: false, error: 'forbidden' });
+  } else if (req.session.role !== 'athlete' || req.user.id !== athleteId) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
+  const note = saveDayNote({
+    athleteId,
+    date,
+    role: req.session.role === 'coach' ? 'coach' : 'athlete',
+    text: req.body?.text || '',
+  });
+  res.json({ ok: true, note });
 });
 
 app.delete('/api/workouts/:id', requireAuth, requireRole('coach'), (req, res) => {

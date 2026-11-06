@@ -14,6 +14,7 @@ function empty() {
     dossiers: [],
     links: [],
     workouts: [],
+    dayNotes: [],
     chats: [],
     loginTokens: [],
     sessions: [],
@@ -509,6 +510,32 @@ export function saveWorkout(w) {
   db.workouts.push(row);
   save();
   return row;
+}
+
+export function listDayNotes(athleteId) {
+  if (!db.dayNotes) db.dayNotes = [];
+  return db.dayNotes.filter((n) => n.athlete_user_id === athleteId);
+}
+
+export function saveDayNote({ athleteId, date, role, text }) {
+  if (!db.dayNotes) db.dayNotes = [];
+  let n = db.dayNotes.find((x) => x.athlete_user_id === athleteId && x.date === date);
+  if (!n) {
+    n = {
+      id: id(),
+      athlete_user_id: athleteId,
+      date,
+      coach_text: '',
+      athlete_text: '',
+    };
+    db.dayNotes.push(n);
+  }
+  const t = String(text ?? '').slice(0, 2000);
+  if (role === 'coach') n.coach_text = t;
+  else n.athlete_text = t;
+  n.updated_at = new Date().toISOString();
+  save();
+  return n;
 }
 
 export function deleteWorkout(workoutId, coachId) {

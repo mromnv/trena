@@ -555,6 +555,112 @@ function shiftIso(iso, days) {
   return dt.toISOString().slice(0, 10);
 }
 
+const VOLUME_TYPES = new Set(['running', 'cycling', 'swimming', 'sbu', 'hurdles']);
+
+function kmOf(w) {
+  return VOLUME_TYPES.has(w.type) ? Number(w.km) || 0 : 0;
+}
+
+function roundKm(n) {
+  return Math.round(n * 10) / 10;
+}
+
+function sumKm(athleteId, coachId, from, to, skipId = null) {
+  return db.workouts.reduce((sum, w) => {
+    if (w.athlete_user_id !== athleteId || w.coach_user_id !== coachId) return sum;
+    if (skipId && w.id === skipId) return sum;
+    if (w.date < from || w.date > to) return sum;
+    return sum + kmOf(w);
+  }, 0);
+}
+
+export function weekOf(iso) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  const delta = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+  const from = shiftIso(iso, -delta);
+  return { from, to: shiftIso(from, 6), prevFrom: shiftIso(from, -7), prevTo: shiftIso(from, -1) };
+}
+
+export function loadWarning({ coachId, athleteId, date, addKm = 0, skipId = null }) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return null;
+  const range = weekOf(date);
+  const prev = sumKm(athleteId, coachId, range.prevFrom, range.prevTo);
+  const next = sumKm(athleteId, coachId, range.from, range.to, skipId) + (Number(addKm) || 0);
+  if (prev <= 0 || next <= prev * 1.1) return null;
+  const user = findUserById(athleteId);
+  return {
+    athleteId,
+    name: user?.first_name || user?.username || 'Ученик',
+    prev: roundKm(prev),
+    next: roundKm(next),
+    pct: Math.round(((next - prev) / prev) * 100),
+  };
+}
+
+function workoutCopy(w, athleteId, coachId) {
+  return {
+    id: id(),
+    coach_user_id: coachId,
+    athlete_user_id: athleteId,
+    date: w.date,
+    type: w.type || 'running',
+    typeLabel: w.typeLabel || '',
+    title: w.title || 'Тренировка',
+    desc: w.desc || '',
+    km: w.km ?? null,
+    pace: w.pace ?? null,
+    zone: w.zone ?? null,
+    dur: w.dur ?? null,
+    exercises: Array.isArray(w.exercises) ? w.exercises.map((e) => ({ ...e })) : [],
+    result: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+export function shareWorkout(coachId, workout, athleteIds) {
+  const rows = [];
+  for (const athleteId of athleteIds) {
+    const row = workoutCopy(workout, athleteId, coachId);
+    db.workouts.push(row);
+    rows.push(row);
+  }
+  if (rows.length) save();
+  return rows;
+}
+
+export function copyWeekToAthletes({ coachId, fromAthleteId, from, athleteIds }) {
+  const end = shiftIso(from, 6);
+  const list = db.workouts.filter(
+    (w) => w.coach_user_id === coachId && w.athlete_user_id === fromAthleteId && w.date >= from && w.date <= end
+  );
+  const addKm = list.reduce((sum, w) => sum + kmOf(w), 0);
+  const warnings = [];
+  const targets = athleteIds.filter((id) => id && id !== fromAthleteId);
+  for (const athleteId of targets) {
+    const warn = loadWarning({ coachId, athleteId, date: from, addKm });
+    if (warn) warnings.push(warn);
+  }
+  return { list, targets, warnings, addKm };
+}
+
+export function applyWeekToAthletes({ coachId, list, targets }) {
+  const created = [];
+  for (const athleteId of targets) {
+    for (const w of list) {
+      const row = workoutCopy(w, athleteId, coachId);
+      db.workouts.push(row);
+      created.push(row);
+    }
+  }
+  if (created.length) save();
+  return created;
+}
+
+export function copyForwardWarning({ coachId, athleteId, from }) {
+  const addKm = sumKm(athleteId, coachId, from, shiftIso(from, 6));
+  return loadWarning({ coachId, athleteId, date: shiftIso(from, 7), addKm });
+}
+
 export function copyWorkoutsWeek({ coachId, athleteId, from }) {
   const end = shiftIso(from, 6);
   const list = db.workouts.filter(

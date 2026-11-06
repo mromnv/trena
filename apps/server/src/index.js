@@ -33,6 +33,11 @@ import {
   saveDayNote,
   moveWorkout,
   copyWorkoutsWeek,
+  copyForwardWarning,
+  loadWarning,
+  shareWorkout,
+  copyWeekToAthletes,
+  applyWeekToAthletes,
   listBusy,
   setBusy,
   workoutsOnDate,
@@ -589,8 +594,28 @@ app.post('/api/workouts', requireAuth, requireRole('coach'), (req, res) => {
   } else if (body.sent !== undefined) {
     patch.sent = !!body.sent;
   }
+  const addKm = ['running', 'cycling', 'swimming', 'sbu', 'hurdles'].includes(type) ? Number(patch.km) || 0 : 0;
+  const also = [...new Set((Array.isArray(body.alsoAthleteIds) ? body.alsoAthleteIds : []).map(Number))]
+    .filter((id) => id && id !== athleteId && coachOwnsAthlete(req, id));
+  const warnings = [];
+  const own = loadWarning({
+    coachId: req.user.id,
+    athleteId,
+    date: String(patch.date || ''),
+    addKm,
+    skipId: workoutId,
+  });
+  if (own) warnings.push(own);
+  for (const id of also) {
+    const warn = loadWarning({ coachId: req.user.id, athleteId: id, date: String(patch.date || ''), addKm });
+    if (warn) warnings.push(warn);
+  }
+  if (warnings.length && !body.force) {
+    return res.json({ ok: true, needConfirm: true, warnings });
+  }
   const row = saveWorkout(patch);
-  res.json({ ok: true, workout: row });
+  const shared = shareWorkout(req.user.id, row, also);
+  res.json({ ok: true, workout: row, shared: shared.length });
 });
 
 app.get('/api/notes', requireAuth, (req, res) => {
@@ -649,8 +674,31 @@ app.post('/api/workouts/copy-week', requireAuth, requireRole('coach'), (req, res
     return res.status(400).json({ ok: false, error: 'bad_request' });
   }
   if (!coachOwnsAthlete(req, athleteId)) return res.status(403).json({ ok: false, error: 'forbidden' });
+  const jump = copyForwardWarning({ coachId: req.user.id, athleteId, from });
+  if (jump && !req.body?.force) {
+    return res.json({ ok: true, needConfirm: true, warnings: [jump] });
+  }
   const { created, to } = copyWorkoutsWeek({ coachId: req.user.id, athleteId, from });
   res.json({ ok: true, count: created.length, to });
+});
+
+app.post('/api/workouts/copy-week-group', requireAuth, requireRole('coach'), (req, res) => {
+  const athleteId = Number(req.body?.athleteId);
+  const from = String(req.body?.from || '');
+  const athleteIds = [...new Set((Array.isArray(req.body?.athleteIds) ? req.body.athleteIds : []).map(Number))]
+    .filter((id) => id && id !== athleteId && coachOwnsAthlete(req, id));
+  if (!athleteId || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+    return res.status(400).json({ ok: false, error: 'bad_request' });
+  }
+  if (!coachOwnsAthlete(req, athleteId)) return res.status(403).json({ ok: false, error: 'forbidden' });
+  if (!athleteIds.length) return res.status(400).json({ ok: false, error: 'no_athletes', message: 'Отметьте учеников' });
+  const plan = copyWeekToAthletes({ coachId: req.user.id, fromAthleteId: athleteId, from, athleteIds });
+  if (!plan.list.length) return res.json({ ok: true, count: 0, athletes: 0 });
+  if (plan.warnings.length && !req.body?.force) {
+    return res.json({ ok: true, needConfirm: true, warnings: plan.warnings });
+  }
+  const created = applyWeekToAthletes({ coachId: req.user.id, list: plan.list, targets: plan.targets });
+  res.json({ ok: true, count: created.length, athletes: plan.targets.length });
 });
 
 app.get('/api/busy', requireAuth, (req, res) => {

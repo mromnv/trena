@@ -1576,12 +1576,16 @@ function dayWorkouts(iso) {
 
 function calBar() {
   return `<div class="cal-bar">
-    <button type="button" class="cal-nav" data-act="plan-zoom-in" title="Крупнее">+</button>
-    <button type="button" class="cal-nav" data-act="plan-zoom-out" title="Мельче: месяц, затем год">−</button>
-    <button type="button" class="cal-nav" data-act="plan-prev" title="Назад">‹</button>
-    <strong class="cal-title">${esc(planTitle())}</strong>
-    <button type="button" class="cal-nav" data-act="plan-next" title="Вперёд">›</button>
-    <button type="button" class="cal-nav" data-act="plan-today">Сегодня</button>
+    <div class="cal-zoom">
+      <button type="button" class="cal-nav" data-act="plan-zoom-in" title="Крупнее">+</button>
+      <button type="button" class="cal-nav" data-act="plan-zoom-out" title="Мельче">−</button>
+    </div>
+    <div class="cal-move">
+      <button type="button" class="cal-nav" data-act="plan-prev" title="Назад">‹</button>
+      <strong class="cal-title">${esc(planTitle())}</strong>
+      <button type="button" class="cal-nav" data-act="plan-next" title="Вперёд">›</button>
+    </div>
+    <button type="button" class="cal-nav today" data-act="plan-today">Сегодня</button>
   </div>`;
 }
 
@@ -1592,30 +1596,28 @@ function weekWorkoutHtml(w, role) {
       <small>${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.pace ? ' · ' + esc(w.pace) : ''}</small>
     </button>`;
   }
-  return `<div class="wo">
-    <button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}">
-      <b>${esc(w.title)}</b>
-      <small>${esc(workoutBits(w))}</small>
-      ${workoutDetails(w) ? `<span class="wo-preview">${esc(workoutDetails(w))}</span>` : ''}
-    </button>
-    ${athleteReportRow(w)}
-  </div>`;
+  return `<button type="button" class="wo" data-act="open-wo" data-id="${w.id}">
+    <b>${esc(w.title)}</b>
+    <small>${esc(typeName(w))}</small>
+  </button>`;
 }
 
 function renderWeekGrid(role) {
   const today = isoDate(new Date());
   const selected = state.planDay;
-  return `<div class="week">${weekDays().map((day) => {
+  return `<div class="cal-scroll"><div class="week cal-week">${weekDays().map((day) => {
     const items = dayWorkouts(day.iso);
     const note = noteFor(day.iso);
     const preview = (note?.coach_text || note?.athlete_text || '').trim();
     return `<div class="day ${day.iso === selected ? 'sel' : ''}">
-      <button type="button" class="day-h" data-act="cal-day" data-date="${day.iso}"><span>${day.label}</span><span>${day.day}</span></button>
-      ${items.map((w) => weekWorkoutHtml(w, role)).join('') || '<div class="muted" style="font-size:12px">—</div>'}
-      ${preview ? `<div class="day-note">${esc(preview.slice(0, 80))}</div>` : ''}
-      ${day.iso === today ? '<div class="today-mark">сегодня</div>' : ''}
+      <button type="button" class="day-h" data-act="cal-day" data-date="${day.iso}">
+        <span class="day-lab">${day.label}</span>
+        <span class="day-num ${day.iso === today ? 'on' : ''}">${day.day}</span>
+      </button>
+      <div class="day-body">${items.map((w) => weekWorkoutHtml(w, role)).join('') || '<div class="day-empty">свободно</div>'}</div>
+      ${preview ? `<div class="day-note">${esc(preview)}</div>` : ''}
     </div>`;
-  }).join('')}</div>`;
+  }).join('')}</div></div>`;
 }
 
 function renderMonthGrid() {
@@ -1631,10 +1633,10 @@ function renderMonthGrid() {
       const iso = isoDate(d);
       const items = dayWorkouts(iso);
       const outside = d.getMonth() !== month;
-      return `<button type="button" class="cal-day ${outside ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.planDay ? 'sel' : ''} ${items.length ? 'has' : ''}" data-act="cal-day" data-date="${iso}">
+      return `<button type="button" class="cal-day ${outside ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.planDay ? 'sel' : ''}" data-act="cal-day" data-date="${iso}">
         <span class="n">${d.getDate()}${hasNote(iso) ? '<i class="note-dot"></i>' : ''}</span>
-        ${items.slice(0, 3).map((w) => `<span class="cal-wo">${esc(w.title)}</span>`).join('')}
-        ${items.length > 3 ? `<span class="cal-wo more">+${items.length - 3}</span>` : ''}
+        ${items.slice(0, 2).map((w) => `<span class="cal-wo">${esc(w.title)}</span>`).join('')}
+        ${items.length > 2 ? `<span class="cal-more">+${items.length - 2}</span>` : ''}
       </button>`;
     }).join('')}</div>
   </div>`;
@@ -1653,7 +1655,7 @@ function renderYearGrid() {
       <div class="mini-grid">${'<span></span>'.repeat(pad)}${cells.map((d) => {
         const iso = isoDate(d);
         const items = dayWorkouts(iso);
-        return `<button type="button" class="mini-day ${items.length ? 'has' : ''} ${hasNote(iso) ? 'note' : ''} ${iso === today ? 'today' : ''}" data-act="cal-day" data-date="${iso}" title="${esc(items.map((w) => w.title).join(', '))}">${d.getDate()}</button>`;
+        return `<button type="button" class="mini-day ${items.length ? 'has' : ''} ${hasNote(iso) ? 'note' : ''} ${iso === today ? 'today' : ''}" data-act="cal-day" data-date="${iso}" title="${esc(items.map((w) => w.title).join(', ') || d.getDate())}"><span>${d.getDate()}</span></button>`;
       }).join('')}</div>
     </div>`;
   }).join('')}</div>`;
@@ -1685,9 +1687,7 @@ function renderDaySheet(role) {
 function renderCalendar(role) {
   const zoom = state.planZoom || 'week';
   const body = zoom === 'year' ? renderYearGrid() : zoom === 'month' ? renderMonthGrid() : renderWeekGrid(role);
-  return `<div class="panel">
-    <h3>Календарь</h3>
-    <p class="hint">«−» показывает месяц, ещё раз — год. «+» возвращает крупнее. Стрелки листают.</p>
+  return `<div class="panel cal-panel">
     ${calBar()}
     ${body}
     ${renderDaySheet(role)}

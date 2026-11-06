@@ -24,6 +24,10 @@ const state = {
   coachPhoto: null, // null = не меняли, '' = убрали, строка = новое фото
   athleteTab: 'plan', // plan | coaches | profile | stats
   viewingWorkoutId: null,
+  planCursor: null,
+  planZoom: 'week',
+  planDay: null,
+  dayNotes: [],
   statsPeriod: 'week', // week | month | season
   editingWorkoutId: null,
   dossier: null,
@@ -35,10 +39,11 @@ const state = {
   notice: '',
 };
 
-const VOLUME_TYPES = new Set(['running', 'cycling', 'swimming']);
+const VOLUME_TYPES = new Set(['running', 'cycling', 'swimming', 'sbu', 'hurdles']);
+const WO_TYPES = ['running', 'sbu', 'hurdles', 'swimming', 'cycling', 'strength', 'recovery', 'rest', 'custom'];
 const TYPE_LABEL = {
-  running: 'Бег', swimming: 'Плавание', cycling: 'Вело',
-  strength: 'ОФП', recovery: 'Восст.', rest: 'Отдых',
+  running: 'Бег', sbu: 'СБУ', hurdles: 'Барьеры', swimming: 'Плавание', cycling: 'Вело',
+  strength: 'ОФП', recovery: 'Восст.', rest: 'Отдых', custom: 'Свой вид',
 };
 
 const VALUE_OPTS = ['Чёткие цифры и план', 'Разнообразие тренировок', 'Бег в удовольствие', 'Здоровье и долголетие', 'Соревновательность', 'Быстрый прогресс', 'Без перегрузок', 'Общение / беговая группа', 'Гибкий график'];
@@ -406,6 +411,7 @@ async function loadCoach() {
     await Promise.all([
       loadWorkouts(state.selectedAthleteId),
       loadDossier(state.selectedAthleteId),
+      loadNotes(state.selectedAthleteId),
     ]);
   }
 }
@@ -415,7 +421,16 @@ async function loadAthlete() {
   const data = await api(`/api/athlete/coaches${q}`);
   state.coaches = data.coaches || [];
   state.coachDirectory = data.directory || [];
-  await Promise.all([loadWorkouts(state.user.id), loadDossier(state.user.id)]);
+  await Promise.all([loadWorkouts(state.user.id), loadDossier(state.user.id), loadNotes(state.user.id)]);
+}
+
+async function loadNotes(athleteId) {
+  if (!athleteId) {
+    state.dayNotes = [];
+    return;
+  }
+  const data = await api(`/api/notes?athleteId=${athleteId}`);
+  state.dayNotes = data.notes || [];
 }
 
 async function loadWorkouts(athleteId) {
@@ -463,7 +478,7 @@ async function selectAthlete(id) {
   state.coachMain = 'team';
   state.coachTab = 'plan';
   state.editingWorkoutId = null;
-  await Promise.all([loadWorkouts(id), loadDossier(id)]);
+  await Promise.all([loadWorkouts(id), loadDossier(id), loadNotes(id)]);
   render();
 }
 
@@ -710,6 +725,19 @@ function cancelEditWorkout() {
   render();
 }
 
+async function savePlanNote() {
+  const athleteId = state.role === 'athlete' ? state.user.id : state.selectedAthleteId;
+  if (!athleteId) return toast('Выберите ученика');
+  const date = state.planDay || isoDate(new Date());
+  await api('/api/notes', {
+    method: 'PUT',
+    body: JSON.stringify({ athleteId, date, text: $('#day-note')?.value ?? '' }),
+  });
+  await loadNotes(athleteId);
+  render();
+  toast('Заметка сохранена');
+}
+
 async function saveWorkoutForm() {
   const athleteId = state.selectedAthleteId;
   if (!athleteId) return toast('Выберите ученика');
@@ -717,16 +745,19 @@ async function saveWorkoutForm() {
   const title = $('#wo-title')?.value.trim() || 'Тренировка';
   const date = $('#wo-date')?.value || new Date().toISOString().slice(0, 10);
   const type = $('#wo-type')?.value || 'running';
+  const kmRaw = $('#wo-km')?.value;
   const payload = {
     athlete_user_id: athleteId,
     title,
     date,
     type,
-    km: type === 'running' || type === 'cycling' || type === 'swimming' ? Number($('#wo-km')?.value || 0) || null : null,
-    pace: type === 'running' ? ($('#wo-pace')?.value.trim() || null) : null,
+    typeLabel: type === 'custom' ? ($('#wo-type-label')?.value.trim() || '') : '',
+    km: kmRaw === '' || kmRaw == null ? null : Number(kmRaw) || null,
+    pace: $('#wo-pace')?.value.trim() || null,
     zone: Number($('#wo-zone')?.value || 0) || null,
     dur: Number($('#wo-dur')?.value || 0) || null,
     desc: $('#wo-desc')?.value.trim() || '',
+    exercises: type === 'strength' ? readExercises() : [],
   };
   if (editingId) payload.id = editingId;
   await api('/api/workouts', {
@@ -766,8 +797,59 @@ function closeReportModal() {
   if (m) { m.hidden = true; m.innerHTML = ''; }
 }
 
+function typeName(w) {
+  if (!w) return '';
+  if (w.type === 'custom') return w.typeLabel || 'Свой вид';
+  return TYPE_LABEL[w.type] || w.type || '';
+}
+
+function workoutDetails(w) {
+  const lines = [];
+  for (const e of w?.exercises || []) {
+    const bits = [];
+    if (e.name) bits.push(e.name);
+    if (e.sets) bits.push(`${e.sets} подх.`);
+    if (e.reps) bits.push(`${e.reps} повт.`);
+    if (e.rest) bits.push(`отдых ${e.rest}`);
+    if (bits.length) lines.push(bits.join(' · '));
+  }
+  const ex = lines.join('\n');
+  if (ex && w.desc) return `${ex}\n\n${w.desc}`;
+  return ex || w?.desc || '';
+}
+
+function workoutBodyHtml(w) {
+  const text = workoutDetails(w);
+  return text ? esc(text) : '<span class="muted">Тренер не добавил текстовое описание.</span>';
+}
+
+function readExercises() {
+  return [...document.querySelectorAll('#ex-list [data-ex]')].map((row) => ({
+    name: row.querySelector('.ex-name')?.value.trim() || '',
+    sets: row.querySelector('.ex-sets')?.value.trim() || '',
+    reps: row.querySelector('.ex-reps')?.value.trim() || '',
+    rest: row.querySelector('.ex-rest')?.value.trim() || '',
+  })).filter((e) => e.name || e.sets || e.reps || e.rest);
+}
+
+function exerciseRowHtml(ex = {}) {
+  return `<div class="ex-row" data-ex>
+    <input class="ex-name" placeholder="Упражнение" value="${esc(ex.name || '')}">
+    <input class="ex-sets" inputmode="numeric" placeholder="Подходы" value="${esc(ex.sets || '')}">
+    <input class="ex-reps" placeholder="Повторы" value="${esc(ex.reps || '')}">
+    <input class="ex-rest" placeholder="Отдых" value="${esc(ex.rest || '')}">
+    <button type="button" class="x" data-act="del-ex" title="Убрать">×</button>
+  </div>`;
+}
+
+function addExerciseRow(ex) {
+  const list = $('#ex-list');
+  if (!list) return;
+  list.insertAdjacentHTML('beforeend', exerciseRowHtml(ex || {}));
+}
+
 function workoutBits(w) {
-  const bits = [TYPE_LABEL[w.type] || w.type || ''];
+  const bits = [typeName(w)];
   if (w.km) bits.push(`${w.km} км`);
   if (w.pace) bits.push(String(w.pace));
   if (w.zone) bits.push(`зона ${w.zone}`);
@@ -802,7 +884,7 @@ function workoutSheet(w) {
   return `<div class="sheet sheet-wide">
     <h3>${esc(w.title || 'Тренировка')}</h3>
     <p class="muted" style="margin:0">${esc(formatWoDate(w.date))} · ${esc(workoutBits(w))}</p>
-    <div class="wo-full">${w.desc ? esc(w.desc) : '<span class="muted">Тренер не добавил текстовое описание.</span>'}</div>
+    <div class="wo-full">${workoutBodyHtml(w)}</div>
     ${reported}
     <div class="actions"><button class="btn ghost" data-act="close-report">Закрыть</button></div>
   </div>`;
@@ -1105,15 +1187,17 @@ function renderCoachProfile(selected) {
 }
 
 function renderCoachPlan(selected) {
-  const days = weekDays();
   const d = state.dossier;
   const edit = state.editingWorkoutId
     ? state.workouts.find((w) => w.id === state.editingWorkoutId)
     : null;
-  const types = ['running', 'swimming', 'cycling', 'strength', 'recovery', 'rest'];
+  const types = WO_TYPES;
   const typeOpts = types.map((t) =>
     `<option value="${t}" ${(edit?.type || 'running') === t ? 'selected' : ''}>${TYPE_LABEL[t] || t}</option>`
   ).join('');
+  const showCustom = (edit?.type || '') === 'custom';
+  const showOfp = (edit?.type || '') === 'strength';
+  const exercises = edit?.exercises?.length ? edit.exercises : [{ name: '', sets: '', reps: '', rest: '' }];
   const zone = edit?.zone || 2;
   const zoneOpts = [1, 2, 3, 4, 5].map((z) =>
     `<option value="${z}" ${Number(zone) === z ? 'selected' : ''}>${z}</option>`
@@ -1125,8 +1209,12 @@ function renderCoachPlan(selected) {
       ${edit ? `<p class="hint" style="margin:0 0 10px">Отчёт атлета при правке плана не сбрасывается. <button type="button" class="btn ghost" data-act="cancel-edit-wo" style="width:auto;padding:4px 8px;margin:0;display:inline">Отменить</button></p>` : ''}
       <div class="stack">
         <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label>Дата</label><input id="wo-date" type="date" value="${esc(edit?.date || new Date().toISOString().slice(0, 10))}"></div>
+          <div><label>Дата</label><input id="wo-date" type="date" value="${esc(edit?.date || state.planDay || isoDate(new Date()))}"></div>
           <div><label>Тип</label><select id="wo-type">${typeOpts}</select></div>
+        </div>
+        <div id="wo-custom-wrap" ${showCustom ? '' : 'hidden'}>
+          <label>Свой вид тренировки</label>
+          <input id="wo-type-label" maxlength="40" value="${esc(edit?.typeLabel || '')}" placeholder="Например: плиометрика, ОРУ, кросс">
         </div>
         <div><label>Название</label><input id="wo-title" value="${esc(edit?.title || '')}" placeholder="Лёгкий бег 8 км"></div>
         <div class="row" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
@@ -1134,6 +1222,12 @@ function renderCoachPlan(selected) {
           <div><label>Темп, мин/км</label><input id="wo-pace" value="${esc(edit?.pace || '')}" placeholder="${esc(d?.pace || '5:30')}"></div>
           <div><label>Зона</label><select id="wo-zone">${zoneOpts}</select></div>
           <div><label>Время, мин</label><input id="wo-dur" type="number" min="1" value="${edit?.dur != null ? esc(edit.dur) : ''}" placeholder="45"></div>
+        </div>
+        <div id="wo-ofp-wrap" ${showOfp ? '' : 'hidden'}>
+          <label>Упражнения ОФП</label>
+          <div class="ex-head"><span>Упражнение</span><span>Подходы</span><span>Повторы</span><span>Отдых</span><span></span></div>
+          <div id="ex-list">${exercises.map((ex) => exerciseRowHtml(ex)).join('')}</div>
+          <button type="button" class="btn" data-act="add-ex" style="width:auto;margin-top:8px">+ Упражнение</button>
         </div>
         <div><label>Описание</label><textarea id="wo-desc" rows="2" placeholder="Темп, зона, акценты">${esc(edit?.desc || '')}</textarea></div>
         ${vdotPanelHtml(d)}
@@ -1144,29 +1238,15 @@ function renderCoachPlan(selected) {
         </div>
       </div>
     </div>
-    <div class="panel">
-      <h3>План · ближайшие дни</h3>
-      <p class="hint">Нажмите на тренировку, чтобы изменить</p>
-      <div class="week">
-        ${days.map((day) => {
-          const items = state.workouts.filter((w) => w.date === day.iso);
-          return `<div class="day"><h4><span>${day.label}</span><span>${day.day}</span></h4>
-            ${items.map((w) => `<button type="button" class="wo ${w.id === state.editingWorkoutId ? 'editing' : ''}" data-act="edit-wo" data-id="${w.id}">
-              <b>${esc(w.title)}</b>
-              <small>${esc(TYPE_LABEL[w.type] || w.type)}${w.km ? ' · ' + w.km + ' км' : ''}${w.pace ? ' · ' + esc(w.pace) : ''}${w.result ? ' · ' + w.result.status + (w.result.rpe != null ? ' · RPE ' + w.result.rpe : '') : ''}</small>
-            </button>`).join('') || '<div class="muted" style="font-size:12px">—</div>'}
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
+    ${renderCalendar('coach')}
     <div class="panel">
       <h3>Все тренировки плана</h3>
       ${sorted.length ? `<div class="list">${sorted.map((w) => `
         <div class="list-item ${w.id === state.editingWorkoutId ? 'on-edit' : ''}">
           <div>
             <b>${esc(w.date)}</b> · ${esc(w.title)}
-            <div class="muted">${esc(TYPE_LABEL[w.type] || w.type)}${w.km ? ' · ' + w.km + ' км' : ''}${w.result ? ' · ' + w.result.status : ' · без отчёта'}</div>
-            ${w.desc ? `<div class="wo-preview">${esc(w.desc)}</div>` : ''}
+            <div class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.result ? ' · ' + w.result.status : ' · без отчёта'}</div>
+            ${workoutDetails(w) ? `<div class="wo-preview">${esc(workoutDetails(w))}</div>` : ''}
           </div>
           <div class="row">
             <button class="btn" style="width:auto" data-act="edit-wo" data-id="${w.id}">Изменить</button>
@@ -1344,41 +1424,27 @@ function renderAthletePlan() {
   const activeCoach = state.coaches.find((c) => c.status === 'active');
   const days = weekDays();
   const from = days[0].iso;
+  const to = days[6].iso;
   const readable = [...state.workouts]
-    .filter((w) => w.date >= from)
+    .filter((w) => w.date >= from && w.date <= to)
     .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
   const coachName = activeCoach?.coach?.first_name || activeCoach?.coach?.username;
-  return `
-      <p class="hint" style="margin-top:0">${coachName ? `Тренер: ${esc(coachName)}. ` : 'Тренер не выбран — откройте вкладку «Тренеры». '}Нажмите на тренировку в календаре или читайте текст ниже целиком.</p>
+  const weekCopy = (state.planZoom || 'week') === 'week' ? `
       <div class="panel">
-        <h3>Неделя</h3>
-        <div class="week">
-          ${days.map((d) => {
-            const items = state.workouts.filter((w) => w.date === d.iso);
-            return `<div class="day"><h4><span>${d.label}</span><span>${d.day}</span></h4>
-              ${items.map((w) => `<div class="wo">
-                <button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}">
-                  <b>${esc(w.title)}</b>
-                  <small>${esc(workoutBits(w))}</small>
-                  ${w.desc ? `<span class="wo-preview">${esc(w.desc)}</span>` : ''}
-                </button>
-                ${athleteReportRow(w)}
-              </div>`).join('') || '<div class="muted" style="font-size:12px">Нет тренировок</div>'}
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-      <div class="panel">
-        <h3>Описание тренировок</h3>
+        <h3>Описание этой недели</h3>
         ${readable.length ? readable.map((w) => `<article class="wo-read">
           <button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}">
             <b>${esc(w.title)}</b>
             <span class="muted">${esc(formatWoDate(w.date))} · ${esc(workoutBits(w))}</span>
           </button>
-          <div class="wo-full">${w.desc ? esc(w.desc) : '<span class="muted">Тренер не добавил текстовое описание.</span>'}</div>
+          <div class="wo-full">${workoutBodyHtml(w)}</div>
           ${athleteReportRow(w)}
-        </article>`).join('') : '<p class="muted">С этой недели тренировок пока нет</p>'}
-      </div>`;
+        </article>`).join('') : '<p class="muted">На этой неделе тренировок нет</p>'}
+      </div>` : '';
+  return `
+      <p class="hint" style="margin-top:0">${coachName ? `Тренер: ${esc(coachName)}. ` : 'Тренер не выбран — откройте вкладку «Тренеры». '}Минус уменьшает календарь: неделя, месяц, год. Нажмите день, чтобы прочитать тренировку и заметку.</p>
+      ${renderCalendar('athlete')}
+      ${weekCopy}`;
 }
 
 function renderAthleteCoaches() {
@@ -1444,13 +1510,188 @@ function renderAthlete() {
   </div>`;
 }
 
-function weekDays() {
+function planAnchor() {
+  return parseIso(state.planCursor || isoDate(new Date()));
+}
+
+function weekDays(anchor) {
   const monLabels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
-  const monday = mondayOf(new Date());
+  const monday = mondayOf(anchor || planAnchor());
   return [...Array(7)].map((_, i) => {
     const d = addDays(monday, i);
-    return { iso: isoDate(d), label: monLabels[i], day: String(d.getDate()) };
+    return { iso: isoDate(d), label: monLabels[i], day: String(d.getDate()), date: d };
   });
+}
+
+function noteFor(iso) {
+  return (state.dayNotes || []).find((n) => n.date === iso) || null;
+}
+
+function hasNote(iso) {
+  const n = noteFor(iso);
+  return !!(n && (n.coach_text || n.athlete_text));
+}
+
+function planTitle() {
+  const d = planAnchor();
+  const zoom = state.planZoom || 'week';
+  if (zoom === 'year') return String(d.getFullYear());
+  if (zoom === 'month') return d.toLocaleString('ru-RU', { month: 'long', year: 'numeric' });
+  const days = weekDays(d);
+  const a = days[0].date;
+  const b = days[6].date;
+  const fmt = (x) => x.toLocaleString('ru-RU', { day: 'numeric', month: 'short' });
+  return `${fmt(a)} – ${fmt(b)}`;
+}
+
+function movePlan(dir) {
+  const d = planAnchor();
+  const zoom = state.planZoom || 'week';
+  if (zoom === 'year') d.setFullYear(d.getFullYear() + dir);
+  else if (zoom === 'month') d.setMonth(d.getMonth() + dir);
+  else d.setDate(d.getDate() + 7 * dir);
+  state.planCursor = isoDate(d);
+  if (!state.editingWorkoutId) state.planDay = state.planCursor;
+  render();
+}
+
+function zoomPlan(out) {
+  const order = ['week', 'month', 'year'];
+  let i = order.indexOf(state.planZoom || 'week');
+  if (i < 0) i = 0;
+  const next = out ? Math.min(2, i + 1) : Math.max(0, i - 1);
+  state.planZoom = order[next];
+  render();
+}
+
+function monthCells(year, month) {
+  const first = new Date(year, month, 1, 12);
+  const start = mondayOf(first);
+  return [...Array(42)].map((_, i) => addDays(start, i));
+}
+
+function dayWorkouts(iso) {
+  return state.workouts.filter((w) => w.date === iso);
+}
+
+function calBar() {
+  return `<div class="cal-bar">
+    <button type="button" class="cal-nav" data-act="plan-zoom-in" title="Крупнее">+</button>
+    <button type="button" class="cal-nav" data-act="plan-zoom-out" title="Мельче: месяц, затем год">−</button>
+    <button type="button" class="cal-nav" data-act="plan-prev" title="Назад">‹</button>
+    <strong class="cal-title">${esc(planTitle())}</strong>
+    <button type="button" class="cal-nav" data-act="plan-next" title="Вперёд">›</button>
+    <button type="button" class="cal-nav" data-act="plan-today">Сегодня</button>
+  </div>`;
+}
+
+function weekWorkoutHtml(w, role) {
+  if (role === 'coach') {
+    return `<button type="button" class="wo ${w.id === state.editingWorkoutId ? 'editing' : ''}" data-act="edit-wo" data-id="${w.id}">
+      <b>${esc(w.title)}</b>
+      <small>${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.pace ? ' · ' + esc(w.pace) : ''}</small>
+    </button>`;
+  }
+  return `<div class="wo">
+    <button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}">
+      <b>${esc(w.title)}</b>
+      <small>${esc(workoutBits(w))}</small>
+      ${workoutDetails(w) ? `<span class="wo-preview">${esc(workoutDetails(w))}</span>` : ''}
+    </button>
+    ${athleteReportRow(w)}
+  </div>`;
+}
+
+function renderWeekGrid(role) {
+  const today = isoDate(new Date());
+  const selected = state.planDay;
+  return `<div class="week">${weekDays().map((day) => {
+    const items = dayWorkouts(day.iso);
+    const note = noteFor(day.iso);
+    const preview = (note?.coach_text || note?.athlete_text || '').trim();
+    return `<div class="day ${day.iso === selected ? 'sel' : ''}">
+      <button type="button" class="day-h" data-act="cal-day" data-date="${day.iso}"><span>${day.label}</span><span>${day.day}</span></button>
+      ${items.map((w) => weekWorkoutHtml(w, role)).join('') || '<div class="muted" style="font-size:12px">—</div>'}
+      ${preview ? `<div class="day-note">${esc(preview.slice(0, 80))}</div>` : ''}
+      ${day.iso === today ? '<div class="today-mark">сегодня</div>' : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderMonthGrid() {
+  const anchor = planAnchor();
+  const year = anchor.getFullYear();
+  const month = anchor.getMonth();
+  const today = isoDate(new Date());
+  const labels = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+  const cells = monthCells(year, month);
+  return `<div class="month">
+    <div class="month-head">${labels.map((l) => `<span>${l}</span>`).join('')}</div>
+    <div class="month-grid">${cells.map((d) => {
+      const iso = isoDate(d);
+      const items = dayWorkouts(iso);
+      const outside = d.getMonth() !== month;
+      return `<button type="button" class="cal-day ${outside ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.planDay ? 'sel' : ''} ${items.length ? 'has' : ''}" data-act="cal-day" data-date="${iso}">
+        <span class="n">${d.getDate()}${hasNote(iso) ? '<i class="note-dot"></i>' : ''}</span>
+        ${items.slice(0, 3).map((w) => `<span class="cal-wo">${esc(w.title)}</span>`).join('')}
+        ${items.length > 3 ? `<span class="cal-wo more">+${items.length - 3}</span>` : ''}
+      </button>`;
+    }).join('')}</div>
+  </div>`;
+}
+
+function renderYearGrid() {
+  const year = planAnchor().getFullYear();
+  const today = isoDate(new Date());
+  return `<div class="year">${[...Array(12)].map((_, month) => {
+    const name = new Date(year, month, 1, 12).toLocaleString('ru-RU', { month: 'long' });
+    const cells = monthCells(year, month).filter((d) => d.getMonth() === month);
+    const pad = (new Date(year, month, 1, 12).getDay() + 6) % 7;
+    const first = isoDate(new Date(year, month, 1, 12));
+    return `<div class="mini-month">
+      <button type="button" class="mini-name" data-act="cal-month" data-date="${first}">${esc(name)}</button>
+      <div class="mini-grid">${'<span></span>'.repeat(pad)}${cells.map((d) => {
+        const iso = isoDate(d);
+        const items = dayWorkouts(iso);
+        return `<button type="button" class="mini-day ${items.length ? 'has' : ''} ${hasNote(iso) ? 'note' : ''} ${iso === today ? 'today' : ''}" data-act="cal-day" data-date="${iso}" title="${esc(items.map((w) => w.title).join(', '))}">${d.getDate()}</button>`;
+      }).join('')}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderDaySheet(role) {
+  const date = state.planDay || isoDate(new Date());
+  const items = dayWorkouts(date);
+  const note = noteFor(date) || {};
+  const mine = role === 'coach' ? (note.coach_text || '') : (note.athlete_text || '');
+  const other = role === 'coach' ? (note.athlete_text || '') : (note.coach_text || '');
+  const otherLabel = role === 'coach' ? 'Заметка ученика' : 'Заметка тренера';
+  return `<div class="day-sheet">
+    <h3>${esc(formatWoDate(date))}</h3>
+    ${items.length ? items.map((w) => `<article class="wo-read">
+      ${role === 'coach'
+        ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}</span></button>`
+        : `<button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(workoutBits(w))}</span></button>`}
+      <div class="wo-full">${workoutBodyHtml(w)}</div>
+      ${role === 'athlete' ? athleteReportRow(w) : ''}
+    </article>`).join('') : '<p class="muted">В этот день тренировок нет</p>'}
+    ${other ? `<p class="hint"><b>${otherLabel}:</b> ${esc(other)}</p>` : ''}
+    <label>${role === 'coach' ? 'Заметка тренера' : 'Моя заметка'}</label>
+    <textarea id="day-note" rows="3" placeholder="Заметка к этому дню">${esc(mine)}</textarea>
+    <button type="button" class="btn" data-act="save-note" style="width:auto;margin-top:8px">Сохранить заметку</button>
+  </div>`;
+}
+
+function renderCalendar(role) {
+  const zoom = state.planZoom || 'week';
+  const body = zoom === 'year' ? renderYearGrid() : zoom === 'month' ? renderMonthGrid() : renderWeekGrid(role);
+  return `<div class="panel">
+    <h3>Календарь</h3>
+    <p class="hint">«−» показывает месяц, ещё раз — год. «+» возвращает крупнее. Стрелки листают.</p>
+    ${calBar()}
+    ${body}
+    ${renderDaySheet(role)}
+  </div>`;
 }
 
 function isoDate(d) {
@@ -1868,6 +2109,30 @@ async function handleAct(btn) {
     if (act === 'find-coach') await findCoach();
     if (act === 'search-coach') await searchCoaches();
     if (act === 'pick-coach') await pickCoach(Number(btn.dataset.id));
+    if (act === 'add-ex') addExerciseRow();
+    if (act === 'del-ex') btn.closest('[data-ex]')?.remove();
+    if (act === 'plan-prev') movePlan(-1);
+    if (act === 'plan-next') movePlan(1);
+    if (act === 'plan-zoom-out') zoomPlan(true);
+    if (act === 'plan-zoom-in') zoomPlan(false);
+    if (act === 'plan-today') {
+      state.planCursor = isoDate(new Date());
+      state.planDay = state.planCursor;
+      render();
+    }
+    if (act === 'cal-month') {
+      state.planCursor = btn.dataset.date;
+      state.planDay = btn.dataset.date;
+      state.planZoom = 'month';
+      render();
+    }
+    if (act === 'cal-day') {
+      state.planDay = btn.dataset.date;
+      state.planCursor = btn.dataset.date;
+      if (state.planZoom === 'year') state.planZoom = 'month';
+      render();
+    }
+    if (act === 'save-note') await savePlanNote();
     if (act === 'add-wo') await saveWorkoutForm();
     if (act === 'edit-wo') startEditWorkout(Number(btn.dataset.id));
     if (act === 'cancel-edit-wo') cancelEditWorkout();
@@ -1884,6 +2149,14 @@ app.addEventListener('click', (e) => {
 });
 
 app.addEventListener('change', (e) => {
+  if (e.target?.id === 'wo-type') {
+    const t = e.target.value;
+    const custom = $('#wo-custom-wrap');
+    const ofp = $('#wo-ofp-wrap');
+    if (custom) custom.hidden = t !== 'custom';
+    if (ofp) ofp.hidden = t !== 'strength';
+    return;
+  }
   if (e.target?.id !== 'cp-photo-file') return;
   const file = e.target.files?.[0];
   e.target.value = '';

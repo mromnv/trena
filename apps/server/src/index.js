@@ -27,6 +27,7 @@ import {
   setLinkStatus,
   removeLink,
   getWorkouts,
+  athletesMissingReports,
   saveWorkout,
   deleteWorkout,
   listDayNotes,
@@ -540,6 +541,23 @@ app.put('/api/athletes/:id/dossier', requireAuth, (req, res) => {
   }
   const dossier = saveDossier(athleteId, req.body || {});
   res.json({ ok: true, dossier });
+});
+
+function moscowIso(shift = 0) {
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  const [y, m, d] = today.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + shift));
+  return dt.toISOString().slice(0, 10);
+}
+
+app.get('/api/coach/report-gaps', requireAuth, requireRole('coach'), (req, res) => {
+  const dates = [moscowIso(0), moscowIso(-1)];
+  res.json({ ok: true, athleteIds: athletesMissingReports(req.user.id, dates) });
 });
 
 /** Workouts */

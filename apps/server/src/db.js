@@ -564,6 +564,17 @@ export function getWorkouts(athleteId, coachId = null) {
   );
 }
 
+export function athletesMissingReports(coachId, dates) {
+  const want = new Set(dates);
+  const ids = new Set();
+  for (const w of db.workouts) {
+    if (w.coach_user_id !== coachId || w.type === 'rest') continue;
+    if (!want.has(w.date) || w.result) continue;
+    ids.add(w.athlete_user_id);
+  }
+  return [...ids];
+}
+
 export function saveWorkout(w) {
   if (w.id) {
     const i = db.workouts.findIndex((x) => x.id === w.id);

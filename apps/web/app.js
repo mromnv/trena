@@ -162,14 +162,27 @@ function onLoginSuccess(data) {
   enterAfterAuth(data);
 }
 
+function dismissSplash() {
+  const el = document.getElementById('splash');
+  if (!el || el.dataset.done) return;
+  el.dataset.done = '1';
+  const started = Number(el.dataset.t || Date.now());
+  const wait = Math.max(0, 2300 - (Date.now() - started));
+  setTimeout(() => {
+    el.classList.add('out');
+    setTimeout(() => el.remove(), 750);
+  }, wait);
+}
+
 async function boot() {
   try {
-    const me = await api('/api/me');
-    applyAuth(me);
-    clearPendingLogin();
-    await routeAfterLogin();
-    return;
-  } catch (_) {}
+    try {
+      const me = await api('/api/me');
+      applyAuth(me);
+      clearPendingLogin();
+      await routeAfterLogin();
+      return;
+    } catch (_) {}
 
   // повторный вход без бота (устройство уже подтверждалось)
   try {
@@ -196,6 +209,9 @@ async function boot() {
     tryRecoverLogin(true);
   }
   render();
+  } finally {
+    dismissSplash();
+  }
 }
 
 async function tryRecoverLogin(silent) {
@@ -2520,4 +2536,5 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
-boot();
+boot().catch(() => dismissSplash());
+setTimeout(dismissSplash, 12000);

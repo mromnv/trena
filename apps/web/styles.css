@@ -18,6 +18,28 @@ body {
     radial-gradient(ellipse at 0% 100%, rgba(91,156,255,.07), transparent 35%);
   background-attachment:fixed;
 }
+.splash {
+  position:fixed; inset:0; z-index:100; display:grid; place-items:center;
+  background:#000; transition:opacity .7s ease;
+}
+.splash img {
+  width:min(86vw, 460px); height:auto; display:block;
+  animation:emblem-in .95s cubic-bezier(.16,.84,.28,1) both;
+}
+.splash.out { opacity:0; pointer-events:none; }
+.splash.out img { animation:emblem-out .7s ease forwards; }
+@keyframes emblem-in {
+  0% { opacity:0; transform:translateY(56px) scale(.62); }
+  68% { opacity:1; transform:translateY(-8px) scale(1.05); }
+  100% { opacity:1; transform:none; }
+}
+@keyframes emblem-out {
+  to { opacity:0; transform:translateY(-16px) scale(1.08); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .splash img, .splash.out img { animation:none; }
+  .splash { transition:opacity .2s linear; }
+}
 button, input, select, textarea { font:inherit; }
 button { cursor:pointer; }
 .app-shell { min-height:100vh; }

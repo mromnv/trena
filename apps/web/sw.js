@@ -1,5 +1,5 @@
-const CACHE = 'trena-shell-v24';
-const ASSETS = ['/', '/index.html', '/app.js', '/vdot.js', '/styles.css', '/trena-logo.jpg', '/manifest.webmanifest'];
+const CACHE = 'trena-shell-v25';
+const ASSETS = ['/', '/index.html', '/app.js', '/vdot.js', '/styles.css', '/trena-logo.jpg', '/trena-emblem.jpg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

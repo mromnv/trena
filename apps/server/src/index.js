@@ -48,6 +48,8 @@ import {
   saveDossier,
   getCoachProfile,
   saveCoachProfile,
+  dataStats,
+  databasePath,
   normalizeCoachPhoto,
   canCoachAccessAthlete,
   normUser,
@@ -168,6 +170,7 @@ app.get('/api/health', (_req, res) => {
     publicUrl: PUBLIC_URL || null,
     port: PORT,
     botTokenConfigured: !!BOT_TOKEN,
+    data: dataStats(),
   });
 });
 
@@ -415,6 +418,12 @@ app.post('/api/athlete/coaches', requireAuth, requireRole('athlete'), async (req
 });
 
 /** Admin */
+app.get('/api/admin/backup', requireAuth, requireAdmin, (_req, res) => {
+  const file = databasePath();
+  if (!fs.existsSync(file)) return res.status(404).json({ ok: false, error: 'no_database' });
+  res.download(file, 'trena-backup.json');
+});
+
 app.get('/api/admin/overview', requireAuth, requireAdmin, (_req, res) => {
   res.json({
     ok: true,

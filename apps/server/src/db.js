@@ -4,8 +4,11 @@ import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = path.resolve(__dirname, '../../../data');
+const dataDir = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.resolve(__dirname, '../../../data');
 const dbPath = path.join(dataDir, 'trena.json');
+const backupPath = path.join(dataDir, 'trena.backup.json');
 
 function empty() {
   return {
@@ -49,22 +52,92 @@ function emptyDossier(userId) {
   };
 }
 
+function hasRealData(data) {
+  if (!data || typeof data !== 'object') return false;
+  return ['users', 'workouts', 'links', 'dossiers'].some((key) => Array.isArray(data[key]) && data[key].length > 0);
+}
+
+function readDbFile(file) {
+  try {
+    if (!fs.existsSync(file)) return null;
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    console.error(`TRENA: не читается ${path.basename(file)}: ${err.message}`);
+    return null;
+  }
+}
+
+function writeAtomic(file, data) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, file);
+}
+
+let createdFresh = false;
+
 function load() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+  const backup = readDbFile(backupPath);
   if (!fs.existsSync(dbPath)) {
+    if (hasRealData(backup)) {
+      writeAtomic(dbPath, backup);
+      console.log('TRENA: база восстановлена из копии');
+      return backup;
+    }
+    createdFresh = true;
     const init = empty();
-    fs.writeFileSync(dbPath, JSON.stringify(init, null, 2), 'utf8');
+    writeAtomic(dbPath, init);
+    console.warn(`TRENA: создана пустая база ${dbPath}. На Railway нужен том с путём /app/data, иначе при обновлении тренировки пропадут.`);
     return init;
   }
-  return JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+  const parsed = readDbFile(dbPath);
+  if (!parsed) {
+    if (hasRealData(backup)) {
+      writeAtomic(dbPath, backup);
+      console.log('TRENA: повреждённый файл заменён копией');
+      return backup;
+    }
+    throw new Error(`TRENA: база повреждена и копии нет: ${dbPath}`);
+  }
+  if (!hasRealData(parsed) && hasRealData(backup)) {
+    writeAtomic(dbPath, backup);
+    console.log('TRENA: пустая база заменена копией с тренировками');
+    return backup;
+  }
+  return parsed;
 }
 
 let db = load();
 
 function save() {
-  const tmp = dbPath + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
-  fs.renameSync(tmp, dbPath);
+  if (!hasRealData(db)) {
+    const existing = readDbFile(dbPath);
+    if (hasRealData(existing)) {
+      console.error('TRENA: запись пустой базы отменена, тренировки на диске сохранены');
+      return;
+    }
+  }
+  if (hasRealData(readDbFile(dbPath))) {
+    try {
+      fs.copyFileSync(dbPath, backupPath);
+    } catch (err) {
+      console.error(`TRENA: не удалось обновить копию: ${err.message}`);
+    }
+  }
+  writeAtomic(dbPath, db);
+}
+
+export function dataStats() {
+  return {
+    workouts: db.workouts?.length || 0,
+    users: db.users?.length || 0,
+    backup: fs.existsSync(backupPath),
+    fresh: createdFresh,
+  };
+}
+
+export function databasePath() {
+  return dbPath;
 }
 
 export function id() {

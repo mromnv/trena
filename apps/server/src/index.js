@@ -557,7 +557,7 @@ app.get('/api/workouts', requireAuth, (req, res) => {
   res.json({ ok: true, workouts: getWorkouts(athleteId) });
 });
 
-app.post('/api/workouts', requireAuth, requireRole('coach'), (req, res) => {
+app.post('/api/workouts', requireAuth, requireRole('coach'), async (req, res) => {
   const body = req.body || {};
   const athleteId = Number(body.athlete_user_id);
   const ok = listAthletesForCoach(req.user.id).some(
@@ -624,7 +624,17 @@ app.post('/api/workouts', requireAuth, requireRole('coach'), (req, res) => {
   }
   const row = saveWorkout(patch);
   const shared = shareWorkout(req.user.id, row, also);
-  res.json({ ok: true, workout: row, shared: shared.length });
+  const verb = workoutId ? 'изменил' : 'назначил';
+  const notices = [await notifyWorkout(req, athleteId, row, verb)];
+  for (const copy of shared) notices.push(await notifyWorkout(req, copy.athlete_user_id, copy, 'назначил'));
+  const failed = notices.find((n) => !n.ok);
+  res.json({
+    ok: true,
+    workout: row,
+    shared: shared.length,
+    notifyOk: !failed,
+    notifyError: failed?.error || '',
+  });
 });
 
 app.get('/api/notes', requireAuth, (req, res) => {
@@ -676,7 +686,7 @@ app.post('/api/workouts/:id/move', requireAuth, requireRole('coach'), (req, res)
   res.json({ ok: true, workout: row });
 });
 
-app.post('/api/workouts/copy-week', requireAuth, requireRole('coach'), (req, res) => {
+app.post('/api/workouts/copy-week', requireAuth, requireRole('coach'), async (req, res) => {
   const athleteId = Number(req.body?.athleteId);
   const from = String(req.body?.from || '');
   if (!athleteId || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
@@ -688,10 +698,17 @@ app.post('/api/workouts/copy-week', requireAuth, requireRole('coach'), (req, res
     return res.json({ ok: true, needConfirm: true, warnings: [jump] });
   }
   const { created, to } = copyWorkoutsWeek({ coachId: req.user.id, athleteId, from });
-  res.json({ ok: true, count: created.length, to });
+  const notice = created.length ? await notifyWeek(req, athleteId, created.length, to) : null;
+  res.json({
+    ok: true,
+    count: created.length,
+    to,
+    notifyOk: notice ? notice.ok : undefined,
+    notifyError: notice?.error || '',
+  });
 });
 
-app.post('/api/workouts/copy-week-group', requireAuth, requireRole('coach'), (req, res) => {
+app.post('/api/workouts/copy-week-group', requireAuth, requireRole('coach'), async (req, res) => {
   const athleteId = Number(req.body?.athleteId);
   const from = String(req.body?.from || '');
   const athleteIds = [...new Set((Array.isArray(req.body?.athleteIds) ? req.body.athleteIds : []).map(Number))]
@@ -707,7 +724,17 @@ app.post('/api/workouts/copy-week-group', requireAuth, requireRole('coach'), (re
     return res.json({ ok: true, needConfirm: true, warnings: plan.warnings });
   }
   const created = applyWeekToAthletes({ coachId: req.user.id, list: plan.list, targets: plan.targets });
-  res.json({ ok: true, count: created.length, athletes: plan.targets.length });
+  const perAthlete = plan.targets.length ? Math.round(created.length / plan.targets.length) : 0;
+  const notices = [];
+  for (const id of plan.targets) notices.push(await notifyWeek(req, id, perAthlete, from));
+  const failed = notices.find((n) => n && !n.ok);
+  res.json({
+    ok: true,
+    count: created.length,
+    athletes: plan.targets.length,
+    notifyOk: !failed,
+    notifyError: failed?.error || '',
+  });
 });
 
 app.get('/api/busy', requireAuth, (req, res) => {
@@ -804,6 +831,31 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   );
   res.json({ ok: true, messages: chat.messages });
 });
+
+function userById(id) {
+  const n = Number(id);
+  return findUserById(n) || findUserById(id);
+}
+
+async function notifyWorkout(req, athleteId, row, verb) {
+  const athlete = userById(athleteId);
+  const coach = req.user.first_name || req.user.username || 'Тренер';
+  const extra = [row.date, row.km ? `${row.km} км` : '', row.pace || ''].filter(Boolean).join(' · ');
+  const text = `<b>TRENA</b>\n${escapeHtml(coach)} ${verb} тренировку <b>${escapeHtml(row.title || 'Тренировка')}</b>${extra ? `\n${escapeHtml(extra)}` : ''}\nОткройте кабинет TRENA.`;
+  const result = await notifyUser(BOT_TOKEN, athlete?.telegram_id, text);
+  if (!result.ok) console.warn('[workout notify]', athleteId, athlete?.telegram_id || 'no-id', result.error);
+  return result;
+}
+
+async function notifyWeek(req, athleteId, count, from) {
+  if (!count) return { ok: true };
+  const athlete = userById(athleteId);
+  const coach = req.user.first_name || req.user.username || 'Тренер';
+  const text = `<b>TRENA</b>\n${escapeHtml(coach)} назначил тренировки на неделю с ${escapeHtml(from)}: ${count}`;
+  const result = await notifyUser(BOT_TOKEN, athlete?.telegram_id, text);
+  if (!result.ok) console.warn('[week notify]', athleteId, result.error);
+  return result;
+}
 
 function escapeHtml(s) {
   return String(s || '')

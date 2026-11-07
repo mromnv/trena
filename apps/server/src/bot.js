@@ -25,12 +25,10 @@ export async function tg(token, method, body) {
 }
 
 export async function sendMessage(token, chatId, text, extra = {}) {
-  return tg(token, 'sendMessage', {
-    chat_id: chatId,
-    text,
-    parse_mode: 'HTML',
-    ...extra,
-  });
+  const payload = { chat_id: chatId, text, ...extra };
+  if (!Object.prototype.hasOwnProperty.call(extra, 'parse_mode')) payload.parse_mode = 'HTML';
+  if (payload.parse_mode == null) delete payload.parse_mode;
+  return tg(token, 'sendMessage', payload);
 }
 
 export async function setupWebhook({ token, publicUrl, secret }) {
@@ -168,11 +166,21 @@ function escapeHtml(s) {
 }
 
 export async function notifyUser(token, telegramId, text) {
-  if (!telegramId) return;
+  if (!token) return { ok: false, error: 'бот не настроен' };
+  if (!telegramId) return { ok: false, error: 'у ученика нет Telegram' };
   try {
     await sendMessage(token, telegramId, text);
+    return { ok: true };
   } catch (e) {
-    console.warn('[notify]', e.message);
+    console.warn('[notify]', telegramId, e.message);
+    try {
+      const plain = String(text).replace(/<[^>]+>/g, '');
+      await sendMessage(token, telegramId, plain, { parse_mode: null });
+      return { ok: true };
+    } catch (e2) {
+      console.warn('[notify plain]', telegramId, e2.message);
+      return { ok: false, error: e2.message || e.message };
+    }
   }
 }
 

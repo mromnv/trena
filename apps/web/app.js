@@ -763,6 +763,12 @@ async function moveWorkoutTo(id, date) {
   toast('Тренировка перенесена');
 }
 
+function notifyTail(data) {
+  if (!data || data.notifyOk == null) return '';
+  if (data.notifyOk) return ' Ученику отправлено в Telegram.';
+  return ` Telegram не доставил: ${data.notifyError || 'неизвестная ошибка'}`;
+}
+
 function formatWarnings(list) {
   const line = (w) => `${w.name}: ${String(w.next).replace('.', ',')} км — на ${w.pct}% больше предыдущей (${String(w.prev).replace('.', ',')} км)`;
   return `Нагрузка вырастет больше чем на 10%.\n${(list || []).map(line).join('\n')}\nВсё равно продолжить?`;
@@ -786,7 +792,7 @@ async function copyWeekForward(force = false) {
     state.planDay = data.to;
   }
   render();
-  toast(data.count ? `Скопировано тренировок: ${data.count}` : 'На этой неделе нет тренировок');
+  toast((data.count ? `Скопировано тренировок: ${data.count}` : 'На этой неделе нет тренировок') + notifyTail(data));
 }
 
 async function copyWeekToGroup(force = false) {
@@ -802,9 +808,9 @@ async function copyWeekToGroup(force = false) {
     if (!confirm(formatWarnings(data.warnings))) return;
     return copyWeekToGroup(true);
   }
-  toast(data.count
+  toast((data.count
     ? `Неделя скопирована: ${data.athletes} уч., ${data.count} тренировок. Отчёты не переносятся.`
-    : 'На этой неделе нет тренировок');
+    : 'На этой неделе нет тренировок') + notifyTail(data));
 }
 
 async function saveBusyDay() {
@@ -884,7 +890,7 @@ async function saveWorkoutForm(force = false) {
   await loadWorkouts(athleteId);
   render();
   const extra = data.shared ? `, ещё ${data.shared} уч.` : '';
-  toast((editingId ? 'Тренировка обновлена' : 'Тренировка добавлена') + extra);
+  toast((editingId ? 'Тренировка обновлена' : 'Тренировка добавлена') + extra + notifyTail(data));
 }
 
 async function deleteWorkoutById(id) {

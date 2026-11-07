@@ -348,7 +348,7 @@ svg.chart .pt { fill:var(--accent); }
 .wo.partial .wo-status, .cal-wo.partial .wo-status, .wo-read.partial .wo-status { color:var(--warn); }
 .wo.missed .wo-status, .cal-wo.missed .wo-status, .wo-read.missed .wo-status { color:var(--bad); }
 .gap-dot { display:inline-block; width:8px; height:8px; margin-left:6px; border-radius:50%; background:var(--warn); vertical-align:middle; }
-.put-here { margin-top:8px; }
+.put-here { margin-top:8px; width:100%; }
 .today-focus { margin-bottom:12px; }
 .today-focus h3 { margin-bottom:8px; }
 .cal-split { display:block; }

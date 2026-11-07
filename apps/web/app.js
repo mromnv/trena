@@ -897,11 +897,18 @@ async function saveWorkoutForm(force = false) {
     return saveWorkoutForm(true);
   }
   state.editingWorkoutId = null;
-  state.planFormOpen = false;
+  if (editingId) {
+    state.planFormOpen = false;
+  } else {
+    state.planDay = date;
+    state.planCursor = date;
+    state.planFormOpen = true;
+  }
   await loadWorkouts(athleteId);
   render();
+  if (!editingId) $('#wo-form')?.scrollIntoView({ block: 'start' });
   const extra = data.shared ? `, ещё ${data.shared} уч.` : '';
-  toast((editingId ? 'Тренировка обновлена' : 'Тренировка добавлена') + extra + notifyTail(data));
+  toast((editingId ? 'Тренировка обновлена' : 'Тренировка добавлена. Можно сразу добавить ещё одну на эту дату.') + extra + notifyTail(data));
 }
 
 async function deleteWorkoutById(id) {
@@ -1414,7 +1421,7 @@ function renderCoachPlan(selected) {
       ${edit ? `<p class="hint" style="margin:0 0 10px">Отчёт атлета при правке плана не сбрасывается. <button type="button" class="btn ghost" data-act="cancel-edit-wo" style="width:auto;padding:4px 8px;margin:0;display:inline">Отменить</button></p>` : ''}
       <div class="stack">
         <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label>Дата</label><input id="wo-date" type="date" value="${esc(edit?.date || state.planDay || isoDate(new Date()))}"></div>
+          <div><label>Дата</label><input id="wo-date" type="date" value="${esc(edit?.date || state.planDay || isoDate(new Date()))}"><p class="hint">На одну дату можно поставить несколько тренировок.</p></div>
           <div><label>Тип</label><select id="wo-type">${typeOpts}</select></div>
         </div>
         <div id="wo-custom-wrap" ${showCustom ? '' : 'hidden'}>
@@ -1834,7 +1841,6 @@ function renderWeekGrid(role) {
       ${races.map((s) => `<div class="race-flag ${s.prio === 'A' ? 'a' : ''}">${esc(raceLabel(s))}</div>`).join('')}
       ${busy ? `<div class="busy-flag">не могу${busy.note ? ' · ' + esc(busy.note) : ''}</div>` : ''}
       <div class="day-body">${items.map((w) => weekWorkoutHtml(w, role)).join('')}</div>
-      ${role === 'coach' && !items.length ? `<button type="button" class="btn put-here" data-act="add-wo-day" data-date="${day.iso}">Поставить сюда</button>` : ''}
       ${preview ? `<div class="day-note">${esc(preview)}</div>` : ''}
     </div>`;
   }).join('')}</div></div>`;
@@ -1921,9 +1927,8 @@ function renderDaySheet(role) {
       <div class="wo-full">${workoutBodyHtml(w)}</div>
       ${role === 'coach' && w.result ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}</p>${reportNotesHtml(w)}` : ''}
       ${role === 'athlete' ? athleteReportRow(w) : ''}
-    </article>`).join('') : (role === 'coach'
-      ? `<button type="button" class="btn primary put-here" data-act="add-wo-day" data-date="${date}">Поставить сюда</button>`
-      : '<p class="muted">В этот день тренировок нет</p>')}
+    </article>`).join('') : '<p class="muted">В этот день тренировок нет</p>'}
+    ${role === 'coach' ? `<button type="button" class="btn primary put-here" data-act="add-wo-day" data-date="${date}">${items.length ? 'Ещё тренировка' : 'Добавить тренировку'}</button>` : ''}
     ${other ? `<p class="hint"><b>${otherLabel}:</b> ${esc(other)}</p>` : ''}
     <label>${role === 'coach' ? 'Заметка тренера' : 'Моя заметка'}</label>
     <textarea id="day-note" rows="3" placeholder="Заметка к этому дню">${esc(mine)}</textarea>

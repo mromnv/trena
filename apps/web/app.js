@@ -31,6 +31,8 @@ const state = {
   busyDays: [],
   statsPeriod: 'week', // week | month | season
   editingWorkoutId: null,
+  planFormOpen: false,
+  drawer: false,
   dossier: null,
   workouts: [],
   reportDraft: null, // { id, status, title, km }
@@ -498,6 +500,8 @@ async function selectAthlete(id) {
   state.coachMain = 'team';
   state.coachTab = 'plan';
   state.editingWorkoutId = null;
+  state.planFormOpen = false;
+  state.drawer = false;
   await Promise.all([loadWorkouts(id), loadDossier(id), loadNotes(id), loadBusy(id)]);
   render();
 }
@@ -734,14 +738,16 @@ async function searchCoaches() {
 
 function startEditWorkout(id) {
   state.editingWorkoutId = Number(id);
+  state.planFormOpen = true;
   state.coachTab = 'plan';
   render();
+  $('#wo-form')?.scrollIntoView({ block: 'start' });
   $('#wo-title')?.focus();
-  toast('Редактирование — измените поля и сохраните');
 }
 
 function cancelEditWorkout() {
   state.editingWorkoutId = null;
+  state.planFormOpen = false;
   render();
 }
 
@@ -874,6 +880,7 @@ async function saveWorkoutForm(force = false) {
     return saveWorkoutForm(true);
   }
   state.editingWorkoutId = null;
+  state.planFormOpen = false;
   await loadWorkouts(athleteId);
   render();
   const extra = data.shared ? `, ещё ${data.shared} уч.` : '';
@@ -883,7 +890,10 @@ async function saveWorkoutForm(force = false) {
 async function deleteWorkoutById(id) {
   if (!confirm('Удалить эту тренировку из плана?')) return;
   await api(`/api/workouts/${id}`, { method: 'DELETE' });
-  if (state.editingWorkoutId === Number(id)) state.editingWorkoutId = null;
+  if (state.editingWorkoutId === Number(id)) {
+    state.editingWorkoutId = null;
+    state.planFormOpen = false;
+  }
   await loadWorkouts(state.selectedAthleteId);
   render();
   toast('Тренировка удалена');
@@ -1006,11 +1016,7 @@ function openWorkout(id) {
 function workoutSheet(w) {
   const reported = w.result
     ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}${w.result.km != null ? ' · ' + esc(w.result.km) + ' км' : ''}</p>${reportNotesHtml(w)}`
-    : `<div class="actions">
-        <button class="btn" data-act="report" data-id="${w.id}" data-status="completed">Выполнено</button>
-        <button class="btn" data-act="report" data-id="${w.id}" data-status="partial">Частично</button>
-        <button class="btn" data-act="report" data-id="${w.id}" data-status="missed">Пропуск</button>
-      </div>`;
+    : reportActionsHtml(w);
   return `<div class="sheet sheet-wide">
     <h3>${esc(w.title || 'Тренировка')}</h3>
     <p class="muted" style="margin:0">${esc(formatWoDate(w.date))} · ${esc(workoutBits(w))}</p>
@@ -1300,7 +1306,7 @@ function renderCoachProfile(selected) {
       <h3>Ключевые старты</h3>
       <p class="hint">A — главный старт, B — важный, C — проходной</p>
       ${starts.map((s) => `
-        <div class="start-row" data-start="${s.id}" style="display:grid;grid-template-columns:64px 1fr 140px 30px;gap:8px;margin-bottom:8px;align-items:center">
+        <div class="start-row" data-start="${s.id}">
           <select data-sf="prio-${s.id}">${['A', 'B', 'C'].map((p) => `<option ${s.prio === p ? 'selected' : ''}>${p}</option>`).join('')}</select>
           <input data-sf="name-${s.id}" value="${esc(s.name || '')}" placeholder="Название старта">
           <input data-sf="date-${s.id}" type="date" value="${esc(s.date || '')}">
@@ -1354,9 +1360,12 @@ function renderCoachPlan(selected) {
     `<option value="${z}" ${Number(zone) === z ? 'selected' : ''}>${z}</option>`
   ).join('');
   const sorted = [...state.workouts].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+  const formOpen = !!(edit || state.planFormOpen);
   return `
-    <div class="panel" id="wo-form">
-      <h3>${edit ? 'Редактирование тренировки' : 'Новая тренировка'} для ${esc(selected.athlete?.first_name || selected.athlete?.username)}</h3>
+    ${renderCalendar('coach')}
+    <button type="button" class="btn primary add-wo-btn" data-act="toggle-wo-form">${formOpen ? 'Скрыть форму' : 'Добавить тренировку'}</button>
+    ${formOpen ? `<div class="panel" id="wo-form">
+      <h3>${edit ? 'Редактирование' : 'Новая тренировка'}</h3>
       ${edit ? `<p class="hint" style="margin:0 0 10px">Отчёт атлета при правке плана не сбрасывается. <button type="button" class="btn ghost" data-act="cancel-edit-wo" style="width:auto;padding:4px 8px;margin:0;display:inline">Отменить</button></p>` : ''}
       <div class="stack">
         <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1368,7 +1377,7 @@ function renderCoachPlan(selected) {
           <input id="wo-type-label" maxlength="40" value="${esc(edit?.typeLabel || '')}" placeholder="Например: плиометрика, ОРУ, кросс">
         </div>
         <div><label>Название</label><input id="wo-title" value="${esc(edit?.title || '')}" placeholder="Лёгкий бег 8 км"></div>
-        <div class="row" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
+        <div class="wo-metrics">
           <div><label>Дистанция, км</label><input id="wo-km" type="number" step="0.5" value="${edit?.km != null ? esc(edit.km) : ''}" placeholder="8"></div>
           <div><label>Темп, мин/км</label><input id="wo-pace" value="${esc(edit?.pace || '')}" placeholder="${esc(d?.pace || '5:30')}"></div>
           <div><label>Зона</label><select id="wo-zone">${zoneOpts}</select></div>
@@ -1389,10 +1398,9 @@ function renderCoachPlan(selected) {
             <button class="btn ghost" data-act="cancel-edit-wo" style="width:auto">Отмена</button>` : ''}
         </div>
       </div>
-    </div>
-    ${renderCalendar('coach')}
-    <div class="panel">
-      <h3>Все тренировки плана</h3>
+    </div>` : ''}
+    <details class="panel">
+      <summary>Все тренировки плана</summary>
       ${sorted.length ? `<div class="list">${sorted.map((w) => `
         <div class="list-item ${w.id === state.editingWorkoutId ? 'on-edit' : ''}">
           <div>
@@ -1406,7 +1414,7 @@ function renderCoachPlan(selected) {
             <button class="btn danger" style="width:auto" data-act="del-wo" data-id="${w.id}">Удалить</button>
           </div>
         </div>`).join('')}</div>` : '<p class="muted">Пока нет тренировок</p>'}
-    </div>`;
+    </details>`;
 }
 
 function renderCoachResume() {
@@ -1475,15 +1483,19 @@ function coachCardHtml(c, actionHtml) {
   </article>`;
 }
 
+function reportActionsHtml(w) {
+  return `<div class="report-actions">
+    <button class="btn primary" data-act="report" data-id="${w.id}" data-status="completed">Сделал</button>
+    <button class="btn" data-act="report" data-id="${w.id}" data-status="partial">Частично</button>
+    <button class="btn danger" data-act="report" data-id="${w.id}" data-status="missed">Не смог</button>
+  </div>`;
+}
+
 function athleteReportRow(w) {
   if (w.result) {
-    return `<div><span class="badge active">${esc(reportStatusLabel(w.result.status))}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}</span>${reportNotesHtml(w)}</div>`;
+    return `<div class="report-done"><span class="badge active">${esc(reportStatusLabel(w.result.status))}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}</span>${reportNotesHtml(w)}</div>`;
   }
-  return `<div class="row" style="margin-top:8px">
-    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="completed" title="Выполнено">✅</button>
-    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="partial" title="Частично">⚠️</button>
-    <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="missed" title="Пропуск">❌</button>
-  </div>`;
+  return reportActionsHtml(w);
 }
 
 function renderCoach() {
@@ -1492,85 +1504,63 @@ function renderCoach() {
   const selected = active.find((a) => a.athlete_user_id === state.selectedAthleteId);
   const goal = selected && state.dossier ? goalLabel(state.dossier) : '';
   const onMe = state.coachMain === 'me';
-  return `<div class="layout">
-    <aside>
-      <div class="brand">
-        <img src="/trena-logo.jpg" alt="">
-        <div><div class="name">TRENA</div><div class="tag">Кабинет тренера</div></div>
-      </div>
-      ${themeButtons()}
-      <div class="muted" style="margin:0 6px 10px;font-size:12px">${esc(state.user?.first_name || '')} ${state.user?.username ? '@' + esc(state.user.username) : ''}</div>
-      <button class="btn ghost" data-act="logout">Выйти</button>
-      <button class="btn ghost" data-act="switch-role">Сменить роль</button>
-      <div class="side-title">Ученики</div>
-      <div id="side">
-        ${active.map((a) => `
-          <button class="ath ${a.athlete_user_id === state.selectedAthleteId ? 'active' : ''}" data-act="select-athlete" data-id="${a.athlete_user_id}">
-            <span class="av">${esc(initials(a.athlete))}</span>
-            <div>
-              <div class="n">${esc(a.athlete?.first_name || a.athlete?.username || 'Ученик')}</div>
-              <div class="g">${a.athlete?.username ? '@' + esc(a.athlete.username) : ''}</div>
-            </div>
-          </button>`).join('') || '<div class="muted" style="padding:8px">Пока нет активных учеников</div>'}
-      </div>
-    </aside>
-    <main>
-      <div class="head">
-        <div>
-          <h1>${onMe ? 'Мой профиль' : selected ? esc(selected.athlete?.first_name || selected.athlete?.username) : 'Тренерский кабинет'}</h1>
-          ${onMe ? '<div class="muted">Резюме, которое видят ученики при выборе тренера</div>' : selected ? `<div class="muted">${esc(goal)}${selected.athlete?.username ? ' · @' + esc(selected.athlete.username) : ''}${state.dossier?.vdot ? ' · VDOT ' + vdFmt(state.dossier.vdot) : ''}</div>` : ''}
-        </div>
-        <span class="grow"></span>
-        <span class="badge active">тренер</span>
-      </div>
-
-      <div class="tabs">
-        <button class="${onMe ? '' : 'on'}" data-act="coach-main-team">Ученики</button>
-        <button class="${onMe ? 'on' : ''}" data-act="coach-main-me">Мой профиль</button>
-      </div>
-
-      ${onMe ? renderCoachResume() : `<div class="panel">
-        <h3>Добавить ученика по Telegram @username</h3>
-        <div class="f2">
-          <div><label>Username ученика</label><input id="athlete-user" placeholder="@username"></div>
-          <button class="btn primary" data-act="add-athlete" style="width:auto">Добавить</button>
-        </div>
-        <p class="hint">Ученик должен хотя бы раз войти в TRENA через бота.</p>
-      </div>
-
-      ${pending.length ? `<div class="panel"><h3>Заявки</h3><div class="list">
-        ${pending.map((a) => `<div class="list-item">
-          <div><b>${esc(a.athlete?.first_name || a.athlete?.username)}</b> ${a.athlete?.username ? '@' + esc(a.athlete.username) : ''} <span class="badge pending">ожидает</span></div>
-          <div class="row">
-            <button class="btn primary" style="width:auto" data-act="accept" data-id="${a.id}">Принять</button>
-            <button class="btn danger" style="width:auto" data-act="remove" data-id="${a.id}">Отклонить</button>
+  const title = onMe ? 'Моё резюме' : (selected?.athlete?.first_name || selected?.athlete?.username || 'Тренер');
+  const sub = onMe
+    ? 'Так вас видят ученики'
+    : selected
+      ? `${goal}${selected.athlete?.username ? ' · @' + selected.athlete.username : ''}${state.dossier?.vdot ? ' · VDOT ' + vdFmt(state.dossier.vdot) : ''}`
+      : 'Выберите ученика в меню';
+  const drawer = `
+    <div class="brand">
+      <img src="/trena-logo.jpg" alt="">
+      <div><div class="name">TRENA</div><div class="tag">Тренер</div></div>
+    </div>
+    <div class="muted drawer-user">${esc(state.user?.first_name || '')} ${state.user?.username ? '@' + esc(state.user.username) : ''}</div>
+    ${themeButtons()}
+    <button class="btn ${onMe ? 'primary' : ''}" data-act="coach-main-me">Моё резюме</button>
+    <button class="btn ghost" data-act="logout">Выйти</button>
+    <button class="btn ghost" data-act="switch-role">Сменить роль</button>
+    <div class="side-title">Ученики</div>
+    <div id="side">
+      ${active.map((a) => `
+        <button class="ath ${a.athlete_user_id === state.selectedAthleteId && !onMe ? 'active' : ''}" data-act="select-athlete" data-id="${a.athlete_user_id}">
+          <span class="av">${esc(initials(a.athlete))}</span>
+          <div>
+            <div class="n">${esc(a.athlete?.first_name || a.athlete?.username || 'Ученик')}</div>
+            <div class="g">${a.athlete?.username ? '@' + esc(a.athlete.username) : ''}</div>
           </div>
-        </div>`).join('')}
-      </div></div>` : ''}
-
-      <div class="panel">
-        <h3>Состав</h3>
-        ${active.length ? `<div class="list">${active.map((a) => `<div class="list-item">
-          <div><b>${esc(a.athlete?.first_name || a.athlete?.username)}</b> ${a.athlete?.username ? '@' + esc(a.athlete.username) : ''}</div>
-          <div class="row">
-            <button class="btn" style="width:auto" data-act="select-athlete" data-id="${a.athlete_user_id}">Открыть</button>
-            <button class="btn danger" style="width:auto" data-act="remove" data-id="${a.id}">Удалить</button>
-          </div>
-        </div>`).join('')}</div>` : '<p class="muted">Пока нет активных учеников</p>'}
+        </button>`).join('') || '<div class="muted" style="padding:8px">Пока нет учеников</div>'}
+    </div>
+    <div class="side-title">Новый ученик</div>
+    <input id="athlete-user" placeholder="@username">
+    <button class="btn primary" data-act="add-athlete">Добавить</button>
+    <p class="hint">Ученик должен один раз войти через бота.</p>
+    ${pending.length ? `<div class="side-title">Заявки</div><div class="list">${pending.map((a) => `<div class="list-item">
+      <div><b>${esc(a.athlete?.first_name || a.athlete?.username)}</b> <span class="badge pending">ожидает</span></div>
+      <div class="row">
+        <button class="btn primary" data-act="accept" data-id="${a.id}">Принять</button>
+        <button class="btn danger" data-act="remove" data-id="${a.id}">Нет</button>
       </div>
-
-      ${selected ? `
+    </div>`).join('')}</div>` : ''}
+    ${active.length ? `<div class="side-title">Убрать из состава</div><div class="list">${active.map((a) => `<div class="list-item">
+      <div>${esc(a.athlete?.first_name || a.athlete?.username)}</div>
+      <button class="btn danger" data-act="remove" data-id="${a.id}">Удалить</button>
+    </div>`).join('')}</div>` : ''}`;
+  const body = onMe
+    ? renderCoachResume()
+    : selected
+      ? `${pending.length ? `<button type="button" class="btn pending-banner" data-act="open-drawer">Заявки: ${pending.length}</button>` : ''}
         <div class="tabs">
           <button class="${state.coachTab === 'plan' ? 'on' : ''}" data-act="tab-plan">План</button>
           <button class="${state.coachTab === 'stats' ? 'on' : ''}" data-act="tab-stats">Статистика</button>
-          <button class="${state.coachTab === 'profile' ? 'on' : ''}" data-act="tab-profile">Профиль атлета</button>
+          <button class="${state.coachTab === 'profile' ? 'on' : ''}" data-act="tab-profile">Досье</button>
         </div>
         ${state.coachTab === 'profile' ? renderCoachProfile(selected)
           : state.coachTab === 'stats' ? renderStats()
-          : renderCoachPlan(selected)}
-      ` : '<div class="panel muted">Выберите ученика слева или добавьте нового.</div>'}`}
-    </main>
-  </div>`;
+          : renderCoachPlan(selected)}`
+      : `<div class="panel"><p class="muted">Откройте меню и выберите ученика или добавьте нового по @username.</p>
+          <button type="button" class="btn primary" data-act="open-drawer">Открыть меню</button></div>`;
+  return phoneFrame({ title: esc(title), sub: esc(sub), drawer, body });
 }
 
 function renderAthletePlan() {
@@ -1582,22 +1572,9 @@ function renderAthletePlan() {
     .filter((w) => w.date >= from && w.date <= to)
     .sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
   const coachName = activeCoach?.coach?.first_name || activeCoach?.coach?.username;
-  const weekCopy = (state.planZoom || 'week') === 'week' ? `
-      <div class="panel">
-        <h3>Описание этой недели</h3>
-        ${readable.length ? readable.map((w) => `<article class="wo-read">
-          <button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}">
-            <b>${esc(w.title)}</b>
-            <span class="muted">${esc(formatWoDate(w.date))} · ${esc(workoutBits(w))}</span>
-          </button>
-          <div class="wo-full">${workoutBodyHtml(w)}</div>
-          ${athleteReportRow(w)}
-        </article>`).join('') : '<p class="muted">На этой неделе тренировок нет</p>'}
-      </div>` : '';
   return `
-      ${coachName ? `<p class="hint" style="margin-top:0">Тренер: ${esc(coachName)}</p>` : '<p class="hint" style="margin-top:0">Тренер не выбран — откройте вкладку «Тренеры».</p>'}
-      ${renderCalendar('athlete')}
-      ${weekCopy}`;
+      ${coachName ? `<p class="hint" style="margin-top:0">Тренер: ${esc(coachName)}</p>` : '<p class="hint coach-missing">Тренер не выбран. Откройте вкладку «Тренеры».</p>'}
+      ${renderCalendar('athlete')}`;
 }
 
 function renderAthleteCoaches() {
@@ -1626,41 +1603,49 @@ function renderAthleteCoaches() {
     </div>`;
 }
 
-function renderAthlete() {
-  const goal = state.dossier ? goalLabel(state.dossier) : '';
-  return `<div class="layout">
-    <aside>
-      <div class="brand">
-        <img src="/trena-logo.jpg" alt="">
-        <div><div class="name">TRENA</div><div class="tag">Кабинет ученика</div></div>
-      </div>
-      ${themeButtons()}
-      <div class="muted" style="margin:0 6px 10px;font-size:12px">${esc(state.user?.first_name || '')} ${state.user?.username ? '@' + esc(state.user.username) : ''}</div>
-      <button class="btn ghost" data-act="logout">Выйти</button>
-      <button class="btn ghost" data-act="switch-role">Сменить роль</button>
-    </aside>
+function phoneFrame({ title, sub, drawer, body }) {
+  return `<div class="layout phone-app ${state.drawer ? 'drawer-open' : ''}">
+    <aside>${drawer}</aside>
+    <div class="backdrop" data-act="close-drawer"></div>
     <main>
-      <div class="head">
-        <div>
-          <h1>${state.athleteTab === 'profile' ? 'Мои данные' : state.athleteTab === 'stats' ? 'Моя статистика' : state.athleteTab === 'coaches' ? 'Тренеры' : 'Мой план'}</h1>
-          <div class="muted">${esc(goal)}${state.dossier?.vdot ? ' · VDOT ' + vdFmt(state.dossier.vdot) : ''}</div>
-        </div>
-        <span class="grow"></span>
-        <span class="badge active">ученик</span>
+      <div class="topbar">
+        <button type="button" class="menu-btn" data-act="open-drawer" aria-label="Меню">☰</button>
+        <div class="topbar-title"><h1>${title}</h1>${sub ? `<div class="muted">${sub}</div>` : ''}</div>
       </div>
-
-      <div class="tabs">
-        <button class="${state.athleteTab === 'plan' ? 'on' : ''}" data-act="ath-tab-plan">План</button>
-        <button class="${state.athleteTab === 'coaches' ? 'on' : ''}" data-act="ath-tab-coaches">Тренеры</button>
-        <button class="${state.athleteTab === 'stats' ? 'on' : ''}" data-act="ath-tab-stats">Статистика</button>
-        <button class="${state.athleteTab === 'profile' ? 'on' : ''}" data-act="ath-tab-profile">Мои данные</button>
-      </div>
-      ${state.athleteTab === 'profile' ? renderCoachProfile({ athlete: state.user })
-        : state.athleteTab === 'stats' ? renderStats()
-        : state.athleteTab === 'coaches' ? renderAthleteCoaches()
-        : renderAthletePlan()}
+      ${body}
     </main>
   </div>`;
+}
+
+function renderAthlete() {
+  const goal = state.dossier ? goalLabel(state.dossier) : '';
+  const titles = { plan: 'Мой план', coaches: 'Тренеры', stats: 'Статистика', profile: 'Мои данные' };
+  const drawer = `
+    <div class="brand">
+      <img src="/trena-logo.jpg" alt="">
+      <div><div class="name">TRENA</div><div class="tag">Ученик</div></div>
+    </div>
+    <div class="muted drawer-user">${esc(state.user?.first_name || '')} ${state.user?.username ? '@' + esc(state.user.username) : ''}</div>
+    ${themeButtons()}
+    <button class="btn ghost" data-act="logout">Выйти</button>
+    <button class="btn ghost" data-act="switch-role">Сменить роль</button>`;
+  const body = `
+    <div class="tabs">
+      <button class="${state.athleteTab === 'plan' ? 'on' : ''}" data-act="ath-tab-plan">План</button>
+      <button class="${state.athleteTab === 'coaches' ? 'on' : ''}" data-act="ath-tab-coaches">Тренеры</button>
+      <button class="${state.athleteTab === 'stats' ? 'on' : ''}" data-act="ath-tab-stats">Статистика</button>
+      <button class="${state.athleteTab === 'profile' ? 'on' : ''}" data-act="ath-tab-profile">Данные</button>
+    </div>
+    ${state.athleteTab === 'profile' ? renderCoachProfile({ athlete: state.user })
+      : state.athleteTab === 'stats' ? renderStats()
+      : state.athleteTab === 'coaches' ? renderAthleteCoaches()
+      : renderAthletePlan()}`;
+  return phoneFrame({
+    title: titles[state.athleteTab] || 'Мой план',
+    sub: esc(`${goal}${state.dossier?.vdot ? ' · VDOT ' + vdFmt(state.dossier.vdot) : ''}`),
+    drawer,
+    body,
+  });
 }
 
 function planAnchor() {
@@ -1872,7 +1857,7 @@ function renderDaySheet(role) {
     : '';
   const busyBox = role === 'athlete'
     ? `<div class="busy-box">
-        <label class="check"><input id="busy-flag" type="checkbox" ${busy ? 'checked' : ''}> Не могу тренироваться в этот день</label>
+        <label class="check"><input id="busy-flag" type="checkbox" ${busy ? 'checked' : ''}> <span>Не могу тренироваться в этот день</span></label>
         <input id="busy-note" maxlength="200" placeholder="Причина, если нужно" value="${esc(busy?.note || '')}">
         <button type="button" class="btn" data-act="save-busy" style="width:auto">Сохранить занятость</button>
       </div>`
@@ -2285,6 +2270,14 @@ async function handleAct(btn) {
     if (act === 'add-athlete') await addAthleteByUsername();
     if (act === 'accept') await acceptLink(Number(btn.dataset.id));
     if (act === 'remove') await removeAthlete(Number(btn.dataset.id));
+    if (act === 'open-drawer') { state.drawer = true; render(); }
+    if (act === 'close-drawer') { state.drawer = false; render(); }
+    if (act === 'toggle-wo-form') {
+      state.planFormOpen = !state.planFormOpen;
+      if (!state.planFormOpen) state.editingWorkoutId = null;
+      render();
+      if (state.planFormOpen) $('#wo-form')?.scrollIntoView({ block: 'start' });
+    }
     if (act === 'select-athlete') await selectAthlete(Number(btn.dataset.id));
     if (act === 'tab-plan') { state.coachTab = 'plan'; render(); }
     if (act === 'tab-stats') { state.coachTab = 'stats'; render(); }
@@ -2293,8 +2286,8 @@ async function handleAct(btn) {
       await loadDossier(state.selectedAthleteId);
       render();
     }
-    if (act === 'coach-main-team') { state.coachMain = 'team'; render(); }
-    if (act === 'coach-main-me') { state.coachMain = 'me'; render(); }
+    if (act === 'coach-main-team') { state.coachMain = 'team'; state.drawer = false; render(); }
+    if (act === 'coach-main-me') { state.coachMain = 'me'; state.drawer = false; render(); }
     if (act === 'save-coach-profile') await saveCoachProfileForm();
     if (act === 'pick-coach-photo') $('#cp-photo-file')?.click();
     if (act === 'clear-coach-photo') applyCoachPhotoPreview('');

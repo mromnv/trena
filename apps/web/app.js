@@ -34,6 +34,7 @@ const state = {
   planFormOpen: false,
   drawer: false,
   reportGaps: [],
+  templates: [],
   dossier: null,
   workouts: [],
   reportDraft: null, // { id, status, title, km }
@@ -418,12 +419,14 @@ async function saveCoachProfileForm() {
 }
 
 async function loadCoach() {
-  const [data, profile] = await Promise.all([
+  const [data, profile, templates] = await Promise.all([
     api('/api/coach/athletes'),
     api('/api/coach/profile'),
+    api('/api/coach/templates').catch(() => ({ templates: [] })),
   ]);
   state.coachProfile = profile.profile || null;
   state.coachPhoto = null;
+  state.templates = templates.templates || [];
   state.athletes = data.athletes || [];
   const active = state.athletes.filter((a) => a.status === 'active');
   if (!state.selectedAthleteId && active[0]) state.selectedAthleteId = active[0].athlete_user_id;
@@ -768,8 +771,7 @@ function startEditWorkout(id) {
   state.planFormOpen = true;
   state.coachTab = 'plan';
   render();
-  $('#wo-form')?.scrollIntoView({ block: 'start' });
-  $('#wo-title')?.focus();
+  revealWorkoutForm();
 }
 
 function cancelEditWorkout() {
@@ -880,6 +882,95 @@ function groupChecks(cls) {
   }).join('')}</div>`;
 }
 
+function revealWorkoutForm() {
+  const form = $('#wo-form');
+  if (!form) return;
+  if (window.innerWidth <= 800) return;
+  form.scrollIntoView({ block: 'start' });
+}
+
+function formWorkoutFields() {
+  const type = $('#wo-type')?.value || 'running';
+  const kmRaw = $('#wo-km')?.value;
+  return {
+    title: $('#wo-title')?.value.trim() || 'Тренировка',
+    type,
+    typeLabel: type === 'custom' ? ($('#wo-type-label')?.value.trim() || '') : '',
+    km: kmRaw === '' || kmRaw == null ? null : Number(kmRaw) || null,
+    pace: $('#wo-pace')?.value.trim() || null,
+    zone: Number($('#wo-zone')?.value || 0) || null,
+    dur: Number($('#wo-dur')?.value || 0) || null,
+    desc: $('#wo-desc')?.value.trim() || '',
+    exercises: type === 'strength' ? readExercises() : [],
+  };
+}
+
+function paintTemplates() {
+  const date = state.planDay || isoDate(new Date());
+  const html = templateBarHtml(date);
+  const node = document.querySelector('.tpl-block, .tpl-empty');
+  if (node) node.outerHTML = html;
+}
+
+async function saveCurrentAsTemplate() {
+  if (!$('#wo-title')) return;
+  try {
+    const data = await api('/api/coach/templates', {
+      method: 'POST',
+      body: JSON.stringify(formWorkoutFields()),
+    });
+    state.templates = data.templates || [];
+    paintTemplates();
+    toast('Шаблон сохранён. Нажмите его в карточке дня.');
+  } catch (e) {
+    toast(e.message || 'Не удалось сохранить шаблон');
+  }
+}
+
+async function removeTemplate(id) {
+  if (!confirm('Удалить этот шаблон?')) return;
+  const data = await api(`/api/coach/templates/${id}`, { method: 'DELETE' });
+  state.templates = data.templates || [];
+  paintTemplates();
+  toast('Шаблон удалён');
+}
+
+async function applyTemplate(id, date, force = false) {
+  const tpl = (state.templates || []).find((t) => t.id === Number(id));
+  const athleteId = state.selectedAthleteId;
+  if (!tpl) return;
+  if (!athleteId) return toast('Выберите ученика');
+  const day = date || state.planDay || isoDate(new Date());
+  const data = await api('/api/workouts', {
+    method: 'POST',
+    body: JSON.stringify({
+      athlete_user_id: athleteId,
+      title: tpl.title,
+      date: day,
+      type: tpl.type,
+      typeLabel: tpl.typeLabel || '',
+      km: tpl.km,
+      pace: tpl.pace,
+      zone: tpl.zone,
+      dur: tpl.dur,
+      desc: tpl.desc || '',
+      exercises: tpl.exercises || [],
+      force: !!force,
+    }),
+  });
+  if (data.needConfirm) {
+    if (!confirm(formatWarnings(data.warnings))) return;
+    return applyTemplate(id, day, true);
+  }
+  state.planDay = day;
+  state.planCursor = day;
+  state.editingWorkoutId = null;
+  state.planFormOpen = false;
+  await loadWorkouts(athleteId);
+  render();
+  toast('Шаблон поставлен на этот день.' + notifyTail(data));
+}
+
 async function saveWorkoutForm(force = false) {
   const athleteId = state.selectedAthleteId;
   if (!athleteId) return toast('Выберите ученика');
@@ -922,7 +1013,7 @@ async function saveWorkoutForm(force = false) {
   }
   await loadWorkouts(athleteId);
   render();
-  if (!editingId) $('#wo-form')?.scrollIntoView({ block: 'start' });
+  if (!editingId) revealWorkoutForm();
   const extra = data.shared ? `, ещё ${data.shared} уч.` : '';
   toast((editingId ? 'Тренировка обновлена' : 'Тренировка добавлена. Можно сразу добавить ещё одну на эту дату.') + extra + notifyTail(data));
 }
@@ -1432,8 +1523,14 @@ function renderCoachPlan(selected) {
   return `
     ${renderCalendar('coach')}
     <button type="button" class="btn primary add-wo-btn" data-act="toggle-wo-form">${formOpen ? 'Скрыть форму' : 'Добавить тренировку'}</button>
-    ${formOpen ? `<div class="panel" id="wo-form">
-      <h3>${edit ? 'Редактирование' : 'Новая тренировка'}</h3>
+    ${formOpen ? `<div class="wo-sheet" id="wo-form">
+      <button type="button" class="sheet-backdrop" data-act="close-wo-form" aria-label="Закрыть"></button>
+      <div class="panel sheet-card">
+      <div class="sheet-handle"></div>
+      <div class="sheet-head">
+        <h3>${edit ? 'Редактирование' : 'Новая тренировка'}</h3>
+        <button type="button" class="btn ghost" data-act="close-wo-form">Закрыть</button>
+      </div>
       ${edit ? `<p class="hint" style="margin:0 0 10px">Отчёт атлета при правке плана не сбрасывается. <button type="button" class="btn ghost" data-act="cancel-edit-wo" style="width:auto;padding:4px 8px;margin:0;display:inline">Отменить</button></p>` : ''}
       <div class="stack">
         <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -1462,9 +1559,11 @@ function renderCoachPlan(selected) {
         ${groupChecks('also-ath') ? `<div><label>Также другим ученикам</label>${groupChecks('also-ath')}<p class="hint">Копия этой тренировки, без отчётов.</p></div>` : ''}
         <div class="row">
           <button class="btn primary" data-act="add-wo" style="width:auto">${edit ? 'Сохранить изменения' : 'Сохранить тренировку'}</button>
+          <button type="button" class="btn ghost" data-act="save-tpl" style="width:auto">В шаблоны</button>
           ${edit ? `<button class="btn danger" data-act="del-wo" data-id="${edit.id}" style="width:auto">Удалить</button>
             <button class="btn ghost" data-act="cancel-edit-wo" style="width:auto">Отмена</button>` : ''}
         </div>
+      </div>
       </div>
     </div>` : ''}
     <details class="panel">
@@ -1944,12 +2043,20 @@ function renderDaySheet(role) {
       ${role === 'coach' && w.result ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}</p>${reportNotesHtml(w)}` : ''}
       ${role === 'athlete' ? athleteReportRow(w) : ''}
     </article>`).join('') : '<p class="muted">В этот день тренировок нет</p>'}
-    ${role === 'coach' ? `<button type="button" class="btn primary put-here" data-act="add-wo-day" data-date="${date}">${items.length ? 'Ещё тренировка' : 'Добавить тренировку'}</button>` : ''}
+    ${role === 'coach' ? `<button type="button" class="btn primary put-here" data-act="add-wo-day" data-date="${date}">${items.length ? 'Ещё тренировка' : 'Добавить тренировку'}</button>${templateBarHtml(date)}` : ''}
     ${other ? `<p class="hint"><b>${otherLabel}:</b> ${esc(other)}</p>` : ''}
     <label>${role === 'coach' ? 'Заметка тренера' : 'Моя заметка'}</label>
     <textarea id="day-note" rows="3" placeholder="Заметка к этому дню">${esc(mine)}</textarea>
     <button type="button" class="btn" data-act="save-note" style="width:auto;margin-top:8px">Сохранить заметку</button>
   </div>`;
+}
+
+function templateBarHtml(date) {
+  const list = state.templates || [];
+  if (!list.length) {
+    return '<p class="hint tpl-empty">Частые тренировки появятся здесь. Откройте форму и нажмите «В шаблоны».</p>';
+  }
+  return `<div class="tpl-block"><p class="hint">Нажатие ставит шаблон на этот день. Крестик удаляет шаблон.</p><div class="tpl-row">${list.map((t) => `<span class="tpl"><button type="button" data-act="use-tpl" data-id="${t.id}" data-date="${date}">${esc(t.title)}${t.km ? ' · ' + esc(t.km) + ' км' : ''}</button><button type="button" class="tpl-x" data-act="del-tpl" data-id="${t.id}" aria-label="Удалить шаблон">×</button></span>`).join('')}</div></div>`;
 }
 
 function renderCalendar(role) {
@@ -2364,7 +2471,7 @@ async function handleAct(btn) {
       state.planFormOpen = !state.planFormOpen;
       if (!state.planFormOpen) state.editingWorkoutId = null;
       render();
-      if (state.planFormOpen) $('#wo-form')?.scrollIntoView({ block: 'start' });
+      if (state.planFormOpen) revealWorkoutForm();
     }
     if (act === 'add-wo-day') {
       state.planDay = btn.dataset.date;
@@ -2374,8 +2481,12 @@ async function handleAct(btn) {
       state.planFormOpen = true;
       state.coachTab = 'plan';
       render();
-      $('#wo-form')?.scrollIntoView({ block: 'start' });
+      revealWorkoutForm();
     }
+    if (act === 'close-wo-form') cancelEditWorkout();
+    if (act === 'save-tpl') await saveCurrentAsTemplate();
+    if (act === 'use-tpl') await applyTemplate(btn.dataset.id, btn.dataset.date);
+    if (act === 'del-tpl') await removeTemplate(Number(btn.dataset.id));
     if (act === 'select-athlete') await selectAthlete(Number(btn.dataset.id));
     if (act === 'tab-plan') { state.coachTab = 'plan'; render(); }
     if (act === 'tab-stats') { state.coachTab = 'stats'; render(); }
@@ -2538,3 +2649,30 @@ if ('serviceWorker' in navigator) {
 
 boot().catch(() => dismissSplash());
 setTimeout(dismissSplash, 12000);
+
+let sheetDrag = null;
+document.addEventListener('pointerdown', (e) => {
+  const handle = e.target.closest?.('.sheet-handle');
+  if (!handle || window.innerWidth > 800) return;
+  const card = handle.closest('.sheet-card');
+  if (!card) return;
+  sheetDrag = { y: e.clientY, dy: 0, card };
+  card.style.transition = 'none';
+  handle.setPointerCapture?.(e.pointerId);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!sheetDrag) return;
+  const dy = Math.max(0, e.clientY - sheetDrag.y);
+  sheetDrag.dy = dy;
+  sheetDrag.card.style.transform = `translateY(${dy}px)`;
+});
+function endSheetDrag() {
+  if (!sheetDrag) return;
+  const { card, dy } = sheetDrag;
+  sheetDrag = null;
+  card.style.transition = '';
+  card.style.transform = '';
+  if (dy > 90) cancelEditWorkout();
+}
+document.addEventListener('pointerup', endSheetDrag);
+document.addEventListener('pointercancel', endSheetDrag);

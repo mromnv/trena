@@ -892,11 +892,15 @@ async function deleteWorkoutById(id) {
 function openReportModal(id, status) {
   const w = state.workouts.find((x) => x.id === id);
   if (!w) return;
-  if (status === 'missed') {
-    submitReport(id, { status: 'missed' });
-    return;
-  }
-  state.reportDraft = { id, status, title: w.title, km: w.km, dur: w.dur };
+  state.viewingWorkoutId = null;
+  state.reportDraft = {
+    id,
+    status,
+    title: w.title,
+    km: w.km,
+    dur: w.dur,
+    exercises: (w.exercises || []).filter((e) => e?.name),
+  };
   renderModal();
 }
 
@@ -911,6 +915,22 @@ function typeName(w) {
   if (!w) return '';
   if (w.type === 'custom') return w.typeLabel || 'Свой вид';
   return TYPE_LABEL[w.type] || w.type || '';
+}
+
+function reportStatusLabel(status) {
+  return { completed: 'выполнено', partial: 'частично', missed: 'пропуск' }[status] || status || '';
+}
+
+function reportNotesHtml(w) {
+  const r = w?.result;
+  if (!r) return '';
+  const skipped = (r.skipped || []).filter((s) => s?.note);
+  const parts = [];
+  if (r.fb) parts.push(`<p class="rep-note">${esc(r.fb)}</p>`);
+  if (skipped.length) {
+    parts.push(`<ul class="rep-skip">${skipped.map((s) => `<li><b>${esc(s.name || 'Упражнение')}</b> — ${esc(s.note)}</li>`).join('')}</ul>`);
+  }
+  return parts.join('');
 }
 
 function workoutDetails(w) {
@@ -985,7 +1005,7 @@ function openWorkout(id) {
 
 function workoutSheet(w) {
   const reported = w.result
-    ? `<p class="muted">Отчёт: ${esc(w.result.status)}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}${w.result.km != null ? ' · ' + esc(w.result.km) + ' км' : ''}${w.result.fb ? ' · ' + esc(w.result.fb) : ''}</p>`
+    ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}${w.result.km != null ? ' · ' + esc(w.result.km) + ' км' : ''}</p>${reportNotesHtml(w)}`
     : `<div class="actions">
         <button class="btn" data-act="report" data-id="${w.id}" data-status="completed">Выполнено</button>
         <button class="btn" data-act="report" data-id="${w.id}" data-status="partial">Частично</button>
@@ -1019,11 +1039,20 @@ function renderModal() {
     m.innerHTML = '';
     return;
   }
-  const stLabel = d.status === 'partial' ? 'частично' : 'выполнено';
+  const stLabel = reportStatusLabel(d.status);
+  const exerciseNotes = (d.exercises || []).length
+    ? `<div class="rep-ex">
+        <label>Если упражнение не получилось</label>
+        ${(d.exercises || []).map((e) => `<div class="rep-ex-row">
+          <b>${esc(e.name)}</b>
+          <textarea class="rep-ex-note" rows="2" maxlength="300" placeholder="Напишите, что не смогли сделать"></textarea>
+        </div>`).join('')}
+      </div>`
+    : '';
   m.hidden = false;
   m.innerHTML = `<div class="sheet">
     <h3>Отчёт · ${esc(d.title)}</h3>
-    <p class="muted" style="margin:0 0 12px">Статус: ${stLabel}. Заполните нагрузку — тренер увидит в статистике.</p>
+    <p class="muted" style="margin:0 0 12px">Статус: ${esc(stLabel)}. Если что-то не получилось — напишите, тренер это увидит.</p>
     <div class="stack">
       <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div><label>RPE (1–10)</label><input id="rep-rpe" type="number" min="1" max="10" step="1" placeholder="6"></div>
@@ -1034,7 +1063,8 @@ function renderModal() {
         <div><label>Пульс ср.</label><input id="rep-hr-avg" type="number" min="40" max="220" placeholder="145"></div>
         <div><label>Пульс макс.</label><input id="rep-hr-max" type="number" min="40" max="220" placeholder="168"></div>
       </div>
-      <div><label>Комментарий</label><textarea id="rep-fb" rows="2" placeholder="Самочувствие, погода, ощущения"></textarea></div>
+      ${exerciseNotes}
+      <div><label>Комментарий</label><textarea id="rep-fb" rows="3" maxlength="1000" placeholder="Что не получилось и почему"></textarea></div>
     </div>
     <div class="actions">
       <button class="btn ghost" data-act="close-report">Отмена</button>
@@ -1058,6 +1088,7 @@ async function submitReportFromModal() {
   const d = state.reportDraft;
   if (!d) return;
   const rpe = Number($('#rep-rpe')?.value);
+  const notes = [...document.querySelectorAll('.rep-ex-note')];
   await submitReport(d.id, {
     status: d.status,
     rpe: rpe >= 1 && rpe <= 10 ? rpe : null,
@@ -1066,6 +1097,10 @@ async function submitReportFromModal() {
     hr_avg: $('#rep-hr-avg')?.value || null,
     hr_max: $('#rep-hr-max')?.value || null,
     fb: $('#rep-fb')?.value.trim() || '',
+    skipped: notes.map((el, i) => ({
+      name: d.exercises[i]?.name || '',
+      note: el.value.trim(),
+    })).filter((e) => e.note),
   });
 }
 
@@ -1356,7 +1391,8 @@ function renderCoachPlan(selected) {
         <div class="list-item ${w.id === state.editingWorkoutId ? 'on-edit' : ''}">
           <div>
             <b>${esc(w.date)}</b> · ${esc(w.title)}
-            <div class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.result ? ' · ' + w.result.status : ' · без отчёта'}</div>
+            <div class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.result ? ' · ' + esc(reportStatusLabel(w.result.status)) : ' · без отчёта'}</div>
+            ${reportNotesHtml(w)}
             ${workoutDetails(w) ? `<div class="wo-preview">${esc(workoutDetails(w))}</div>` : ''}
           </div>
           <div class="row">
@@ -1435,7 +1471,7 @@ function coachCardHtml(c, actionHtml) {
 
 function athleteReportRow(w) {
   if (w.result) {
-    return `<span class="badge active">${esc(w.result.status)}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}</span>`;
+    return `<div><span class="badge active">${esc(reportStatusLabel(w.result.status))}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}</span>${reportNotesHtml(w)}</div>`;
   }
   return `<div class="row" style="margin-top:8px">
     <button class="btn" style="width:auto;padding:6px 8px;font-size:12px" data-act="report" data-id="${w.id}" data-status="completed" title="Выполнено">✅</button>
@@ -1844,6 +1880,7 @@ function renderDaySheet(role) {
         ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}</span></button>`
         : `<button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(workoutBits(w))}</span></button>`}
       <div class="wo-full">${workoutBodyHtml(w)}</div>
+      ${role === 'coach' && w.result ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}</p>${reportNotesHtml(w)}` : ''}
       ${role === 'athlete' ? athleteReportRow(w) : ''}
     </article>`).join('') : '<p class="muted">В этот день тренировок нет</p>'}
     ${other ? `<p class="hint"><b>${otherLabel}:</b> ${esc(other)}</p>` : ''}
@@ -2171,13 +2208,13 @@ function renderStats() {
         return `<div class="rep">
           <div class="rpe-box">${r.rpe ?? '—'}<small>RPE</small></div>
           <div style="flex:1">
-            <div><b>${esc(w.title)}</b> <span class="badge ${r.status === 'completed' ? 'active' : r.status === 'missed' ? 'pending' : ''}">${esc(r.status)}</span></div>
+            <div><b>${esc(w.title)}</b> <span class="badge ${r.status === 'completed' ? 'active' : r.status === 'missed' ? 'pending' : ''}">${esc(reportStatusLabel(r.status))}</span></div>
             <div class="meta">${esc(w.date)} · ${esc(TYPE_LABEL[w.type] || w.type)}
               ${actualKm(w) ? ` · ${fmtNum(actualKm(w))} км` : ''}
               ${r.hr_avg != null ? ` · пульс ${r.hr_avg}${r.hr_max != null ? '/' + r.hr_max : ''}` : ''}
               ${actualDur(w) ? ` · ${actualDur(w)} мин` : ''}
             </div>
-            ${r.fb ? `<q>«${esc(r.fb)}»</q>` : ''}
+            ${reportNotesHtml(w)}
           </div>
         </div>`;
       }).join('') : '<p class="muted">Отчётов за период пока нет. Ученик отмечает тренировки и указывает RPE/пульс.</p>'}

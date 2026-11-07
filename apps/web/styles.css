@@ -227,7 +227,11 @@ svg.chart .pt { fill:var(--accent); }
 .rep { display:flex; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
 .rep:last-child { border:0; }
 .rep .meta { color:var(--muted); font-size:12px; }
-.rep q { display:block; margin-top:6px; font-style:normal; background:var(--soft); border-radius:9px; padding:7px 10px; }
+.rep q, .rep-note { display:block; margin-top:6px; font-style:normal; background:var(--soft); border-radius:9px; padding:7px 10px; }
+.rep-skip { margin:6px 0 0; padding-left:18px; }
+.rep-skip li { margin:4px 0; }
+.rep-ex { display:grid; gap:8px; }
+.rep-ex-row { display:grid; gap:4px; }
 .rpe-box {
   font-weight:800; min-width:48px; text-align:center; border-radius:10px;
   background:var(--soft); padding:8px 0; height:fit-content; border:1px solid var(--line);

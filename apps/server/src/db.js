@@ -612,7 +612,7 @@ export function saveTemplate(coachId, body) {
     zone: Number(body.zone) || null,
     dur: Number(body.dur) || null,
     desc: String(body.desc || '').slice(0, 2000),
-    exercises: type === 'strength' ? cleanTemplateExercises(body.exercises) : [],
+    exercises: type === 'strength' || type === 'sbu' ? cleanTemplateExercises(body.exercises) : [],
   };
   db.templates.push(row);
   save();

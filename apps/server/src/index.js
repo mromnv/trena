@@ -630,7 +630,7 @@ app.post('/api/workouts', requireAuth, requireRole('coach'), async (req, res) =>
     pace: body.pace ?? null,
     zone: body.zone ?? null,
     dur: body.dur ?? null,
-    exercises: type === 'strength' ? cleanExercises(body.exercises) : [],
+    exercises: type === 'strength' || type === 'sbu' ? cleanExercises(body.exercises) : [],
   };
   // result только если явно передали (иначе при правке плана отчёт сохраняется)
   if (body.result !== undefined) patch.result = body.result;

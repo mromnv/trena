@@ -10,6 +10,8 @@ COPY apps/web ./apps/web
 RUN mkdir -p /app/data
 
 ENV MODE=cloud
+# Том Railway должен быть смонтирован сюда, иначе база обнуляется при каждом деплое
+ENV DATA_DIR=/app/data
 # Фиксируем порт — в Railway Networking укажите тот же: 8000
 ENV PORT=8000
 EXPOSE 8000

@@ -44,6 +44,26 @@ const state = {
   notice: '',
 };
 
+const SBU_DRILLS = [
+  'Подъём бедра с выносом вперёд',
+  'Перекат с пятки на носок',
+  'Бег с высоким подниманием бедра',
+  'Бег с захлёстыванием голени',
+  'Бег с забрасыванием голени назад',
+  'Семенящий бег',
+  'Бег на прямых ногах',
+  'Бег скрестным шагом',
+  'Многоскоки',
+  'Олений бег',
+  'Выпады',
+  'Приставной шаг',
+  'Бег спиной вперёд',
+  'Ускорения',
+];
+
+function exerciseType(type) {
+  return type === 'strength' || type === 'sbu';
+}
 const VOLUME_TYPES = new Set(['running', 'cycling', 'swimming', 'sbu', 'hurdles']);
 const WO_TYPES = ['running', 'sbu', 'hurdles', 'swimming', 'cycling', 'strength', 'recovery', 'rest', 'custom'];
 const TYPE_LABEL = {
@@ -901,7 +921,7 @@ function formWorkoutFields() {
     zone: Number($('#wo-zone')?.value || 0) || null,
     dur: Number($('#wo-dur')?.value || 0) || null,
     desc: $('#wo-desc')?.value.trim() || '',
-    exercises: type === 'strength' ? readExercises() : [],
+    exercises: exerciseType(type) ? readExercises() : [],
   };
 }
 
@@ -990,7 +1010,7 @@ async function saveWorkoutForm(force = false) {
     zone: Number($('#wo-zone')?.value || 0) || null,
     dur: Number($('#wo-dur')?.value || 0) || null,
     desc: $('#wo-desc')?.value.trim() || '',
-    exercises: type === 'strength' ? readExercises() : [],
+    exercises: exerciseType(type) ? readExercises() : [],
     alsoAthleteIds: [...document.querySelectorAll('.also-ath:checked')].map((el) => Number(el.value)),
     force: !!force,
   };
@@ -1108,7 +1128,7 @@ function workoutDetails(w) {
     const bits = [];
     if (e.name) bits.push(e.name);
     if (e.sets) bits.push(`${e.sets} подх.`);
-    if (e.reps) bits.push(`${e.reps} повт.`);
+    if (e.reps) bits.push(w.type === 'sbu' ? String(e.reps) : `${e.reps} повт.`);
     if (e.rest) bits.push(`отдых ${e.rest}`);
     if (bits.length) lines.push(bits.join(' · '));
   }
@@ -1131,11 +1151,11 @@ function readExercises() {
   })).filter((e) => e.name || e.sets || e.reps || e.rest);
 }
 
-function exerciseRowHtml(ex = {}) {
+function exerciseRowHtml(ex = {}, sbu = false) {
   return `<div class="ex-row" data-ex>
     <input class="ex-name" placeholder="Упражнение" value="${esc(ex.name || '')}">
     <input class="ex-sets" inputmode="numeric" placeholder="Подходы" value="${esc(ex.sets || '')}">
-    <input class="ex-reps" placeholder="Повторы" value="${esc(ex.reps || '')}">
+    <input class="ex-reps" placeholder="${sbu ? '30 м' : 'Повторы'}" value="${esc(ex.reps || '')}">
     <input class="ex-rest" placeholder="Отдых" value="${esc(ex.rest || '')}">
     <button type="button" class="x" data-act="del-ex" title="Убрать">×</button>
   </div>`;
@@ -1144,7 +1164,49 @@ function exerciseRowHtml(ex = {}) {
 function addExerciseRow(ex) {
   const list = $('#ex-list');
   if (!list) return;
-  list.insertAdjacentHTML('beforeend', exerciseRowHtml(ex || {}));
+  const sbu = $('#wo-type')?.value === 'sbu';
+  list.insertAdjacentHTML('beforeend', exerciseRowHtml(ex || {}, sbu));
+}
+
+function addSbuDrill(name) {
+  const list = $('#ex-list');
+  if (!list || !name) return;
+  const rows = [...list.querySelectorAll('[data-ex]')];
+  const names = rows.map((row) => row.querySelector('.ex-name')?.value.trim() || '');
+  if (names.includes(name)) return;
+  const blank = rows.length === 1 && !names[0] ? rows[0] : null;
+  if (blank) {
+    blank.querySelector('.ex-name').value = name;
+    blank.querySelector('.ex-sets')?.focus();
+    return;
+  }
+  addExerciseRow({ name });
+}
+
+function addAllSbuDrills() {
+  const list = $('#ex-list');
+  if (!list) return;
+  const rows = [...list.querySelectorAll('[data-ex]')];
+  if (rows.length === 1 && !rows[0].querySelector('.ex-name')?.value.trim()) rows[0].remove();
+  const have = new Set([...list.querySelectorAll('.ex-name')].map((el) => el.value.trim()));
+  for (const name of SBU_DRILLS) {
+    if (!have.has(name)) addExerciseRow({ name });
+  }
+}
+
+function syncExerciseForm(type) {
+  const wrap = $('#wo-ex-wrap');
+  const presets = $('#sbu-presets');
+  const label = $('#wo-ex-label');
+  const repsH = $('#wo-ex-reps-h');
+  const sbu = type === 'sbu';
+  if (wrap) wrap.hidden = !exerciseType(type);
+  if (presets) presets.hidden = !sbu;
+  if (label) label.textContent = sbu ? 'Упражнения СБУ' : 'Упражнения ОФП';
+  if (repsH) repsH.textContent = sbu ? 'Метры' : 'Повторы';
+  document.querySelectorAll('#ex-list .ex-reps').forEach((el) => {
+    el.placeholder = sbu ? '30 м' : 'Повторы';
+  });
 }
 
 function workoutBits(w) {
@@ -1512,7 +1574,9 @@ function renderCoachPlan(selected) {
     `<option value="${t}" ${(edit?.type || 'running') === t ? 'selected' : ''}>${TYPE_LABEL[t] || t}</option>`
   ).join('');
   const showCustom = (edit?.type || '') === 'custom';
-  const showOfp = (edit?.type || '') === 'strength';
+  const woType = edit?.type || 'running';
+  const showEx = exerciseType(woType);
+  const showSbu = woType === 'sbu';
   const exercises = edit?.exercises?.length ? edit.exercises : [{ name: '', sets: '', reps: '', rest: '' }];
   const zone = edit?.zone || 2;
   const zoneOpts = [1, 2, 3, 4, 5].map((z) =>
@@ -1548,10 +1612,15 @@ function renderCoachPlan(selected) {
           <div><label>Зона</label><select id="wo-zone">${zoneOpts}</select></div>
           <div><label>Время, мин</label><input id="wo-dur" type="number" min="1" value="${edit?.dur != null ? esc(edit.dur) : ''}" placeholder="45"></div>
         </div>
-        <div id="wo-ofp-wrap" ${showOfp ? '' : 'hidden'}>
-          <label>Упражнения ОФП</label>
-          <div class="ex-head"><span>Упражнение</span><span>Подходы</span><span>Повторы</span><span>Отдых</span><span></span></div>
-          <div id="ex-list">${exercises.map((ex) => exerciseRowHtml(ex)).join('')}</div>
+        <div id="wo-ex-wrap" ${showEx ? '' : 'hidden'}>
+          <label id="wo-ex-label">${showSbu ? 'Упражнения СБУ' : 'Упражнения ОФП'}</label>
+          <div id="sbu-presets" ${showSbu ? '' : 'hidden'}>
+            <p class="hint">Нажмите упражнение и укажите подходы. В «Метры» — длина отрезка, например 30 м.</p>
+            <div class="sbu-presets">${SBU_DRILLS.map((name) => `<button type="button" class="sbu-chip" data-act="add-sbu" data-name="${esc(name)}">${esc(name)}</button>`).join('')}</div>
+            <button type="button" class="btn" data-act="add-sbu-all" style="width:auto;margin-top:8px">Весь набор</button>
+          </div>
+          <div class="ex-head"><span>Упражнение</span><span>Подходы</span><span id="wo-ex-reps-h">${showSbu ? 'Метры' : 'Повторы'}</span><span>Отдых</span><span></span></div>
+          <div id="ex-list">${exercises.map((ex) => exerciseRowHtml(ex, showSbu)).join('')}</div>
           <button type="button" class="btn" data-act="add-ex" style="width:auto;margin-top:8px">+ Упражнение</button>
         </div>
         <div><label>Описание</label><textarea id="wo-desc" rows="2" placeholder="Темп, зона, акценты">${esc(edit?.desc || '')}</textarea></div>
@@ -2529,6 +2598,8 @@ async function handleAct(btn) {
     if (act === 'search-coach') await searchCoaches();
     if (act === 'pick-coach') await pickCoach(Number(btn.dataset.id));
     if (act === 'add-ex') addExerciseRow();
+    if (act === 'add-sbu') addSbuDrill(btn.dataset.name);
+    if (act === 'add-sbu-all') addAllSbuDrills();
     if (act === 'del-ex') btn.closest('[data-ex]')?.remove();
     if (act === 'plan-prev') movePlan(-1);
     if (act === 'plan-next') movePlan(1);
@@ -2603,9 +2674,9 @@ app.addEventListener('change', (e) => {
   if (e.target?.id === 'wo-type') {
     const t = e.target.value;
     const custom = $('#wo-custom-wrap');
-    const ofp = $('#wo-ofp-wrap');
+    const ofp = $('#wo-ex-wrap');
     if (custom) custom.hidden = t !== 'custom';
-    if (ofp) ofp.hidden = t !== 'strength';
+    if (ofp) syncExerciseForm(t);
     return;
   }
   if (e.target?.id !== 'cp-photo-file') return;

@@ -379,7 +379,11 @@ svg.chart .pt { fill:var(--accent); }
 .sheet-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .sheet-head h3 { margin:0; }
 .sheet-head .btn { width:auto; margin:0; }
-.tpl-row { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.sbu-presets { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.sbu-chip {
+  width:auto; border:1px solid var(--line); background:var(--soft); color:var(--text);
+  border-radius:999px; padding:8px 12px; font-weight:700; font-size:13px;
+}
 .tpl { display:inline-flex; align-items:center; border:1px solid var(--line); border-radius:999px; background:var(--soft); max-width:100%; }
 .tpl button { border:0; background:transparent; color:var(--text); font-weight:700; padding:8px 12px; width:auto; }
 .tpl-x { color:var(--muted); padding-left:0; font-size:16px; line-height:1; }

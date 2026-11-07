@@ -55,15 +55,10 @@ button { cursor:pointer; }
 }
 .role-btn strong { display:block; font-size:16px; margin-bottom:4px; }
 .layout { display:grid; grid-template-columns:280px 1fr; min-height:100vh; }
-.phone-app { display:block; }
-.phone-app aside {
-  position:fixed; z-index:40; top:0; bottom:0; left:0; width:min(320px, 88vw);
-  height:auto; transform:translateX(-105%); transition:transform .2s ease;
-  padding-top:calc(18px + env(safe-area-inset-top));
-}
-.phone-app.drawer-open aside { transform:none; }
-.phone-app .backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:30; }
-.phone-app.drawer-open .backdrop { display:block; }
+.phone-app { display:grid; grid-template-columns:280px minmax(0,1fr); }
+.phone-app aside { position:sticky; transform:none; width:auto; height:100vh; }
+.phone-app .backdrop, .menu-btn { display:none; }
+.phone-app main { min-width:0; }
 .topbar {
   position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px;
   background:var(--bg); padding:8px 0 10px;
@@ -294,7 +289,7 @@ svg.chart .pt { fill:var(--accent); }
 .cal-nav.today { width:auto; padding:0 12px; font-size:13px; font-weight:700; background:var(--soft); border:1px solid var(--line); border-radius:12px; }
 .cal-title { text-align:center; text-transform:capitalize; font-size:15px; padding:0 8px; white-space:nowrap; }
 .cal-scroll { overflow-x:auto; }
-.cal-week { min-width:760px; align-items:stretch; }
+.cal-week { min-width:0; align-items:stretch; }
 .cal-week .day { display:flex; flex-direction:column; min-height:168px; padding:10px; background:var(--panel); }
 .cal-week .day.sel { border-color:var(--accent); background:var(--soft); }
 .day-h {
@@ -389,19 +384,31 @@ svg.chart .pt { fill:var(--accent); }
 .ex-head, .ex-row { display:grid; grid-template-columns:1.5fr .7fr .7fr .8fr auto; gap:6px; align-items:center; }
 .ex-head { font-size:11px; color:var(--muted); font-weight:700; margin-bottom:4px; }
 .ex-row { margin-bottom:6px; }
-@media (min-width:960px) {
-  .phone-app { display:grid; grid-template-columns:280px 1fr; }
-  .phone-app aside { position:sticky; transform:none; width:auto; height:100vh; }
-  .phone-app .menu-btn, .phone-app .backdrop { display:none; }
-  .phone-app main { padding:22px 26px 60px; }
+@media (min-width:801px) {
   .wo-metrics { grid-template-columns:1fr 1fr 1fr 1fr; }
   .start-row { grid-template-columns:64px 1fr 140px 30px; }
+  .phone-app main { padding:22px 26px 60px; }
+}
+@media (max-width:800px) {
+  .phone-app { display:block; }
+  .phone-app aside {
+    position:fixed; z-index:40; top:0; bottom:0; left:0; width:min(300px,88vw);
+    height:100vh; transform:translateX(-110%); transition:transform .2s ease;
+    padding-top:calc(18px + env(safe-area-inset-top));
+  }
+  .phone-app.drawer-open aside { transform:none; }
+  .phone-app .backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:30; }
+  .phone-app.drawer-open .backdrop { display:block; }
+  .menu-btn { display:grid; place-items:center; }
+  .phone-app main { padding:8px 14px calc(28px + env(safe-area-inset-bottom)); }
+  .cal-scroll { overflow:visible; }
+  .cal-week { grid-template-columns:1fr; }
+  .cal-week .day { min-height:0; padding:12px; }
 }
 @media (max-width:860px) {
   .layout:not(.phone-app) { grid-template-columns:1fr; }
   .layout:not(.phone-app) aside { position:static; height:auto; border-right:0; border-bottom:1px solid var(--line); }
-  .week { grid-template-columns:1fr 1fr; }
-  .cal-week { grid-template-columns:repeat(7,minmax(108px,1fr)); }
+  .week:not(.cal-week) { grid-template-columns:1fr 1fr; }
   .year { grid-template-columns:repeat(2,minmax(0,1fr)); }
   .cal-bar { flex-wrap:wrap; }
   .cal-move { flex:1 1 220px; }
@@ -410,8 +417,7 @@ svg.chart .pt { fill:var(--accent); }
   .two { grid-template-columns:1fr; }
 }
 @media (max-width:520px) {
-  .week { grid-template-columns:1fr; }
-  .cal-week { grid-template-columns:repeat(7,minmax(92px,1fr)); }
+  .week:not(.cal-week) { grid-template-columns:1fr; }
   .kpis { grid-template-columns:1fr; }
   .year { grid-template-columns:1fr 1fr; }
   .cal-day { min-height:72px; padding:6px; }

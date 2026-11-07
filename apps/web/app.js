@@ -937,6 +937,21 @@ function reportStatusLabel(status) {
   return { completed: 'выполнено', partial: 'частично', missed: 'пропуск' }[status] || status || '';
 }
 
+function resultTone(w) {
+  const status = w?.result?.status;
+  if (status === 'completed') return 'done';
+  if (status === 'partial') return 'partial';
+  if (status === 'missed') return 'missed';
+  return '';
+}
+
+function dayTone(items) {
+  if (items.some((w) => w.result?.status === 'missed')) return 'missed';
+  if (items.some((w) => w.result?.status === 'partial')) return 'partial';
+  if (items.some((w) => w.result?.status === 'completed')) return 'done';
+  return '';
+}
+
 function reportNotesHtml(w) {
   const r = w?.result;
   if (!r) return '';
@@ -1408,7 +1423,7 @@ function renderCoachPlan(selected) {
     <details class="panel">
       <summary>Все тренировки плана</summary>
       ${sorted.length ? `<div class="list">${sorted.map((w) => `
-        <div class="list-item ${w.id === state.editingWorkoutId ? 'on-edit' : ''}">
+        <div class="list-item ${resultTone(w)} ${w.id === state.editingWorkoutId ? 'on-edit' : ''}">
           <div>
             <b>${esc(w.date)}</b> · ${esc(w.title)}
             <div class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.result ? ' · ' + esc(reportStatusLabel(w.result.status)) : ' · без отчёта'}</div>
@@ -1764,13 +1779,14 @@ function calBar(role) {
 }
 
 function weekWorkoutHtml(w, role) {
+  const tone = resultTone(w);
   if (role === 'coach') {
-    return `<button type="button" class="wo ${w.id === state.editingWorkoutId ? 'editing' : ''}" draggable="true" data-drag-wo="${w.id}" data-act="edit-wo" data-id="${w.id}">
+    return `<button type="button" class="wo ${tone} ${w.id === state.editingWorkoutId ? 'editing' : ''}" draggable="true" data-drag-wo="${w.id}" data-act="edit-wo" data-id="${w.id}">
       <b>${esc(w.title)}</b>
       <small>${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.pace ? ' · ' + esc(w.pace) : ''}</small>
     </button>`;
   }
-  return `<button type="button" class="wo" data-act="open-wo" data-id="${w.id}">
+  return `<button type="button" class="wo ${tone}" data-act="open-wo" data-id="${w.id}">
     <b>${esc(w.title)}</b>
     <small>${esc(typeName(w))}</small>
   </button>`;
@@ -1814,8 +1830,8 @@ function renderMonthGrid(role) {
       const busy = busyOn(iso);
       const races = startsOn(iso);
       const chips = items.slice(0, 2).map((w) => role === 'coach'
-        ? `<span class="cal-wo" draggable="true" data-drag-wo="${w.id}">${esc(w.title)}</span>`
-        : `<span class="cal-wo">${esc(w.title)}</span>`).join('');
+        ? `<span class="cal-wo ${resultTone(w)}" draggable="true" data-drag-wo="${w.id}">${esc(w.title)}</span>`
+        : `<span class="cal-wo ${resultTone(w)}">${esc(w.title)}</span>`).join('');
       return `<div class="cal-day ${outside ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.planDay ? 'sel' : ''} ${busy ? 'busy' : ''} ${races.some((s) => s.prio === 'A') ? 'race-a' : ''}" data-act="cal-day" data-date="${iso}">
         <span class="n">${d.getDate()}${hasNote(iso) ? '<i class="note-dot"></i>' : ''}</span>
         ${races.slice(0, 2).map((s) => `<span class="cal-race ${s.prio === 'A' ? 'a' : ''}">${esc(raceLabel(s))}</span>`).join('')}
@@ -1843,7 +1859,7 @@ function renderYearGrid() {
         const busy = busyOn(iso);
         const races = startsOn(iso);
         const titleBits = [...races.map(raceLabel), busy ? 'не могу' : '', ...items.map((w) => w.title)].filter(Boolean);
-        return `<button type="button" class="mini-day ${items.length ? 'has' : ''} ${hasNote(iso) ? 'note' : ''} ${busy ? 'busy' : ''} ${races.some((s) => s.prio === 'A') ? 'race-a' : races.length ? 'race' : ''} ${iso === today ? 'today' : ''}" data-act="cal-day" data-date="${iso}" title="${esc(titleBits.join(', ') || d.getDate())}"><span>${d.getDate()}</span></button>`;
+        return `<button type="button" class="mini-day ${items.length ? 'has' : ''} ${dayTone(items)} ${hasNote(iso) ? 'note' : ''} ${busy ? 'busy' : ''} ${races.some((s) => s.prio === 'A') ? 'race-a' : races.length ? 'race' : ''} ${iso === today ? 'today' : ''}" data-act="cal-day" data-date="${iso}" title="${esc(titleBits.join(', ') || d.getDate())}"><span>${d.getDate()}</span></button>`;
       }).join('')}</div>
     </div>`;
   }).join('')}</div>`;
@@ -1872,7 +1888,7 @@ function renderDaySheet(role) {
     <h3>${esc(formatWoDate(date))}</h3>
     ${raceLine}
     ${busyBox}
-    ${items.length ? items.map((w) => `<article class="wo-read">
+    ${items.length ? items.map((w) => `<article class="wo-read ${resultTone(w)}">
       ${role === 'coach'
         ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}</span></button>`
         : `<button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(workoutBits(w))}</span></button>`}

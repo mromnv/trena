@@ -134,6 +134,9 @@ label { display:block; font-size:12px; font-weight:600; color:var(--muted); marg
   background:var(--panel); border-radius:9px; padding:8px; color:inherit; margin-bottom:6px;
 }
 .wo:hover { border-color:var(--accent); }
+.wo.done, .list-item.done { border-left:4px solid var(--ok); background:color-mix(in srgb, var(--ok) 14%, var(--panel)); }
+.wo.partial, .list-item.partial { border-left:4px solid var(--warn); background:color-mix(in srgb, var(--warn) 16%, var(--panel)); }
+.wo.missed, .list-item.missed { border-left:4px solid var(--bad); background:color-mix(in srgb, var(--bad) 14%, var(--panel)); }
 .wo.editing { border-color:var(--accent); background:var(--soft); box-shadow:0 0 0 1px var(--accent); }
 .wo b { display:block; font-size:13px; }
 .wo small { color:var(--muted); font-size:11px; }
@@ -331,6 +334,15 @@ svg.chart .pt { fill:var(--accent); }
   background:var(--soft); color:var(--text);
 }
 .cal-day.out .cal-wo { opacity:.55; }
+.cal-wo.done { background:color-mix(in srgb, var(--ok) 32%, var(--soft)); }
+.cal-wo.partial { background:color-mix(in srgb, var(--warn) 36%, var(--soft)); }
+.cal-wo.missed { background:color-mix(in srgb, var(--bad) 32%, var(--soft)); }
+.wo-read.done { box-shadow:inset 4px 0 0 var(--ok); }
+.wo-read.partial { box-shadow:inset 4px 0 0 var(--warn); }
+.wo-read.missed { box-shadow:inset 4px 0 0 var(--bad); }
+.mini-day.done { color:var(--ok); font-weight:800; }
+.mini-day.partial { color:var(--warn); font-weight:800; }
+.mini-day.missed { color:var(--bad); font-weight:800; }
 .cal-more { font-size:11px; color:var(--muted); padding-left:6px; }
 .note-dot {
   position:absolute; top:-1px; right:-1px; width:6px; height:6px; border-radius:50%;
@@ -448,6 +460,9 @@ svg.chart .pt { fill:var(--accent); }
     content:""; width:6px; height:6px; border-radius:50%; background:var(--accent);
   }
   .month-grid .cal-day.race-a::after { background:var(--warn); }
+  .month-grid .cal-day:has(.cal-wo.done)::after { background:var(--ok); }
+  .month-grid .cal-day:has(.cal-wo.partial)::after { background:var(--warn); }
+  .month-grid .cal-day:has(.cal-wo.missed)::after { background:var(--bad); }
   .year { grid-template-columns:1fr; }
   .mini-day { font-size:13px; }
   .group-line { align-items:stretch; }

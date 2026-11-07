@@ -33,6 +33,7 @@ const state = {
   editingWorkoutId: null,
   planFormOpen: false,
   drawer: false,
+  reportGaps: [],
   dossier: null,
   workouts: [],
   reportDraft: null, // { id, status, title, km }
@@ -458,6 +459,16 @@ async function loadNotes(athleteId) {
 async function loadWorkouts(athleteId) {
   const data = await api(`/api/workouts?athleteId=${athleteId}`);
   state.workouts = data.workouts || [];
+  if (state.role === 'coach') await loadReportGaps();
+}
+
+async function loadReportGaps() {
+  try {
+    const data = await api('/api/coach/report-gaps');
+    state.reportGaps = data.athleteIds || [];
+  } catch (_) {
+    state.reportGaps = [];
+  }
 }
 
 async function addAthleteByUsername() {
@@ -943,6 +954,19 @@ function resultTone(w) {
   if (status === 'partial') return 'partial';
   if (status === 'missed') return 'missed';
   return '';
+}
+
+function resultWord(w) {
+  const status = w?.result?.status;
+  if (status === 'completed') return 'сделал';
+  if (status === 'partial') return 'частично';
+  if (status === 'missed') return 'не смог';
+  return '';
+}
+
+function statusMark(w) {
+  const word = resultWord(w);
+  return word ? `<span class="wo-status">${esc(word)}</span>` : '';
 }
 
 function dayTone(items) {
@@ -1547,7 +1571,7 @@ function renderCoach() {
         <button class="ath ${a.athlete_user_id === state.selectedAthleteId && !onMe ? 'active' : ''}" data-act="select-athlete" data-id="${a.athlete_user_id}">
           <span class="av">${esc(initials(a.athlete))}</span>
           <div>
-            <div class="n">${esc(a.athlete?.first_name || a.athlete?.username || 'Ученик')}</div>
+            <div class="n">${esc(a.athlete?.first_name || a.athlete?.username || 'Ученик')}${(state.reportGaps || []).map(Number).includes(Number(a.athlete_user_id)) ? '<i class="gap-dot" title="Нет отчёта за сегодня или вчера"></i>' : ''}</div>
             <div class="g">${a.athlete?.username ? '@' + esc(a.athlete.username) : ''}</div>
           </div>
         </button>`).join('') || '<div class="muted" style="padding:8px">Пока нет учеников</div>'}
@@ -1595,6 +1619,7 @@ function renderAthletePlan() {
   const coachName = activeCoach?.coach?.first_name || activeCoach?.coach?.username;
   return `
       ${coachName ? `<p class="hint" style="margin-top:0">Тренер: ${esc(coachName)}</p>` : '<p class="hint coach-missing">Тренер не выбран. Откройте вкладку «Тренеры».</p>'}
+      ${renderTodayFocus()}
       ${renderCalendar('athlete')}`;
 }
 
@@ -1782,12 +1807,12 @@ function weekWorkoutHtml(w, role) {
   const tone = resultTone(w);
   if (role === 'coach') {
     return `<button type="button" class="wo ${tone} ${w.id === state.editingWorkoutId ? 'editing' : ''}" draggable="true" data-drag-wo="${w.id}" data-act="edit-wo" data-id="${w.id}">
-      <b>${esc(w.title)}</b>
+      <b>${esc(w.title)}</b>${statusMark(w)}
       <small>${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.pace ? ' · ' + esc(w.pace) : ''}</small>
     </button>`;
   }
   return `<button type="button" class="wo ${tone}" data-act="open-wo" data-id="${w.id}">
-    <b>${esc(w.title)}</b>
+    <b>${esc(w.title)}</b>${statusMark(w)}
     <small>${esc(typeName(w))}</small>
   </button>`;
 }
@@ -1809,6 +1834,7 @@ function renderWeekGrid(role) {
       ${races.map((s) => `<div class="race-flag ${s.prio === 'A' ? 'a' : ''}">${esc(raceLabel(s))}</div>`).join('')}
       ${busy ? `<div class="busy-flag">не могу${busy.note ? ' · ' + esc(busy.note) : ''}</div>` : ''}
       <div class="day-body">${items.map((w) => weekWorkoutHtml(w, role)).join('')}</div>
+      ${role === 'coach' && !items.length ? `<button type="button" class="btn put-here" data-act="add-wo-day" data-date="${day.iso}">Поставить сюда</button>` : ''}
       ${preview ? `<div class="day-note">${esc(preview)}</div>` : ''}
     </div>`;
   }).join('')}</div></div>`;
@@ -1830,8 +1856,8 @@ function renderMonthGrid(role) {
       const busy = busyOn(iso);
       const races = startsOn(iso);
       const chips = items.slice(0, 2).map((w) => role === 'coach'
-        ? `<span class="cal-wo ${resultTone(w)}" draggable="true" data-drag-wo="${w.id}">${esc(w.title)}</span>`
-        : `<span class="cal-wo ${resultTone(w)}">${esc(w.title)}</span>`).join('');
+        ? `<span class="cal-wo ${resultTone(w)}" draggable="true" data-drag-wo="${w.id}">${statusMark(w)}${esc(w.title)}</span>`
+        : `<span class="cal-wo ${resultTone(w)}">${statusMark(w)}${esc(w.title)}</span>`).join('');
       return `<div class="cal-day ${outside ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.planDay ? 'sel' : ''} ${busy ? 'busy' : ''} ${races.some((s) => s.prio === 'A') ? 'race-a' : ''}" data-act="cal-day" data-date="${iso}">
         <span class="n">${d.getDate()}${hasNote(iso) ? '<i class="note-dot"></i>' : ''}</span>
         ${races.slice(0, 2).map((s) => `<span class="cal-race ${s.prio === 'A' ? 'a' : ''}">${esc(raceLabel(s))}</span>`).join('')}
@@ -1890,12 +1916,14 @@ function renderDaySheet(role) {
     ${busyBox}
     ${items.length ? items.map((w) => `<article class="wo-read ${resultTone(w)}">
       ${role === 'coach'
-        ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}</span></button>`
-        : `<button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}"><b>${esc(w.title)}</b><span class="muted">${esc(workoutBits(w))}</span></button>`}
+        ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b>${statusMark(w)}<span class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}</span></button>`
+        : `<button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}"><b>${esc(w.title)}</b>${statusMark(w)}<span class="muted">${esc(workoutBits(w))}</span></button>`}
       <div class="wo-full">${workoutBodyHtml(w)}</div>
       ${role === 'coach' && w.result ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}</p>${reportNotesHtml(w)}` : ''}
       ${role === 'athlete' ? athleteReportRow(w) : ''}
-    </article>`).join('') : '<p class="muted">В этот день тренировок нет</p>'}
+    </article>`).join('') : (role === 'coach'
+      ? `<button type="button" class="btn primary put-here" data-act="add-wo-day" data-date="${date}">Поставить сюда</button>`
+      : '<p class="muted">В этот день тренировок нет</p>')}
     ${other ? `<p class="hint"><b>${otherLabel}:</b> ${esc(other)}</p>` : ''}
     <label>${role === 'coach' ? 'Заметка тренера' : 'Моя заметка'}</label>
     <textarea id="day-note" rows="3" placeholder="Заметка к этому дню">${esc(mine)}</textarea>
@@ -1913,9 +1941,26 @@ function renderCalendar(role) {
     ${taperBanner()}
     ${calBar(role)}
     ${group}
-    ${body}
-    ${renderDaySheet(role)}
+    <div class="cal-split">
+      <div class="cal-main">${body}</div>
+      ${renderDaySheet(role)}
+    </div>
   </div>`;
+}
+
+function renderTodayFocus() {
+  const today = isoDate(new Date());
+  const items = dayWorkouts(today).filter((w) => w.type !== 'rest');
+  const rest = dayWorkouts(today).some((w) => w.type === 'rest');
+  const body = items.length
+    ? items.map((w) => `<article class="wo-read ${resultTone(w)}">
+        <b>${esc(w.title)}</b>${statusMark(w)}
+        <div class="muted">${esc(workoutBits(w))}</div>
+        <div class="wo-full">${workoutBodyHtml(w)}</div>
+        ${athleteReportRow(w)}
+      </article>`).join('')
+    : `<p class="muted">${rest ? 'Сегодня день отдыха.' : 'На сегодня тренировок нет.'}</p>`;
+  return `<div class="panel today-focus"><h3>Сегодня</h3>${body}</div>`;
 }
 
 function isoDate(d) {
@@ -2299,6 +2344,16 @@ async function handleAct(btn) {
       if (!state.planFormOpen) state.editingWorkoutId = null;
       render();
       if (state.planFormOpen) $('#wo-form')?.scrollIntoView({ block: 'start' });
+    }
+    if (act === 'add-wo-day') {
+      state.planDay = btn.dataset.date;
+      state.planCursor = btn.dataset.date;
+      state.planZoom = state.planZoom === 'year' ? 'month' : (state.planZoom || 'week');
+      state.editingWorkoutId = null;
+      state.planFormOpen = true;
+      state.coachTab = 'plan';
+      render();
+      $('#wo-form')?.scrollIntoView({ block: 'start' });
     }
     if (act === 'select-athlete') await selectAthlete(Number(btn.dataset.id));
     if (act === 'tab-plan') { state.coachTab = 'plan'; render(); }

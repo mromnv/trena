@@ -1,4 +1,4 @@
-const CACHE = 'trena-shell-v22';
+const CACHE = 'trena-shell-v23';
 const ASSETS = ['/', '/index.html', '/app.js', '/vdot.js', '/styles.css', '/trena-logo.jpg', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

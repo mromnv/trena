@@ -87,6 +87,8 @@ function toast(msg) {
 function setTheme(theme) {
   const next = theme === 'light' ? 'light' : 'dark';
   document.documentElement.setAttribute('data-theme', next);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', next === 'light' ? '#f6f6f4' : '#0f0f0f');
   localStorage.setItem('trena-theme', next);
   render();
 }

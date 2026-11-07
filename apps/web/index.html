@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0a0c10">
+  <meta name="theme-color" content="#0f0f0f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="TRENA">
   <title>TRENA</title>
@@ -17,7 +17,10 @@
   <script>
     (function () {
       const t = localStorage.getItem('trena-theme');
-      document.documentElement.setAttribute('data-theme', t === 'light' ? 'light' : 'dark');
+      const light = t === 'light';
+      document.documentElement.setAttribute('data-theme', light ? 'light' : 'dark');
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', light ? '#f6f6f4' : '#0f0f0f');
     })();
   </script>
 </head>

@@ -4,8 +4,8 @@
   "description": "Тренируйся · Развивайся · Достигай",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0a0c10",
-  "theme_color": "#0a0c10",
+  "background_color": "#0f0f0f",
+  "theme_color": "#0f0f0f",
   "lang": "ru",
   "icons": [
     {

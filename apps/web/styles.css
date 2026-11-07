@@ -375,3 +375,31 @@ svg.chart .pt { fill:var(--accent); }
   .ex-head { display:none; }
   .ex-row { grid-template-columns:1fr 1fr; }
 }
+@media (max-width:720px) {
+  .cal-scroll { overflow:visible; }
+  .cal-week { min-width:0; grid-template-columns:1fr; gap:8px; }
+  .cal-week .day { min-height:0; padding:12px; }
+  .cal-week .day-h { padding-bottom:6px; }
+  .cal-week .wo b { font-size:14px; }
+  .cal-bar { gap:6px; }
+  .cal-move { flex:1 1 100%; order:-1; }
+  .cal-nav { width:44px; height:44px; }
+  .cal-title { font-size:14px; white-space:normal; }
+  .cal-nav.today { min-height:44px; }
+  .month-grid .cal-day {
+    min-height:0; aspect-ratio:1; padding:4px 2px; align-items:center; gap:2px;
+  }
+  .month-grid .cal-wo,
+  .month-grid .cal-race,
+  .month-grid .busy-flag,
+  .month-grid .cal-more { display:none; }
+  .month-grid .cal-day:has(.cal-wo)::after,
+  .month-grid .cal-day:has(.cal-race)::after {
+    content:""; width:6px; height:6px; border-radius:50%; background:var(--accent);
+  }
+  .month-grid .cal-day.race-a::after { background:var(--warn); }
+  .year { grid-template-columns:1fr; }
+  .mini-day { font-size:13px; }
+  .group-line { align-items:stretch; }
+  .group-line .cal-nav.today { width:100%; }
+}

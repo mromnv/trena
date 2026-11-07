@@ -1202,6 +1202,12 @@ function renderAdmin() {
       </div>
 
       <div class="panel">
+        <h3>Копия базы</h3>
+        <p class="hint">Скачайте файл перед обновлением, если на Railway ещё не подключён том /app/data.</p>
+        <a class="btn" href="/api/admin/backup" style="width:auto;display:inline-block;text-decoration:none">Скачать базу</a>
+      </div>
+
+      <div class="panel">
         <h3>Выдать роль тренера</h3>
         <div class="f2">
           <div><label>Telegram @username</label><input id="adm-coach-user" placeholder="@username"></div>

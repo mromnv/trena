@@ -739,6 +739,13 @@ app.post('/api/workouts/:id/report', requireAuth, requireRole('athlete'), (req, 
     return res.status(400).json({ ok: false, error: 'invalid_status' });
   }
   const num = (v) => (v === '' || v == null || Number.isNaN(Number(v)) ? null : Number(v));
+  const skipped = (Array.isArray(req.body?.skipped) ? req.body.skipped : [])
+    .slice(0, 40)
+    .map((e) => ({
+      name: String(e?.name || '').trim().slice(0, 80),
+      note: String(e?.note || '').trim().slice(0, 300),
+    }))
+    .filter((e) => e.note);
   w.result = {
     status,
     rpe: num(req.body?.rpe),
@@ -746,7 +753,8 @@ app.post('/api/workouts/:id/report', requireAuth, requireRole('athlete'), (req, 
     dur: num(req.body?.dur),
     hr_avg: num(req.body?.hr_avg),
     hr_max: num(req.body?.hr_max),
-    fb: req.body?.fb || '',
+    fb: String(req.body?.fb || '').trim().slice(0, 1000),
+    skipped,
     at: new Date().toISOString(),
   };
   saveWorkout(w);

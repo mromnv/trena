@@ -21,6 +21,7 @@ function empty() {
     busyDays: [],
     reminderDays: [],
     chats: [],
+    templates: [],
     loginTokens: [],
     sessions: [],
     deviceTokens: [],
@@ -573,6 +574,58 @@ export function athletesMissingReports(coachId, dates) {
     ids.add(w.athlete_user_id);
   }
   return [...ids];
+}
+
+const TEMPLATE_TYPES = new Set(['running', 'swimming', 'cycling', 'strength', 'recovery', 'rest', 'sbu', 'hurdles', 'custom']);
+
+function ensureTemplates() {
+  if (!Array.isArray(db.templates)) db.templates = [];
+}
+
+function cleanTemplateExercises(list) {
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, 40).map((e) => ({
+    name: String(e?.name || '').trim().slice(0, 80),
+    sets: String(e?.sets ?? '').trim().slice(0, 12),
+    reps: String(e?.reps ?? '').trim().slice(0, 24),
+    rest: String(e?.rest || '').trim().slice(0, 24),
+  })).filter((e) => e.name || e.sets || e.reps || e.rest);
+}
+
+export function listTemplates(coachId) {
+  ensureTemplates();
+  return db.templates.filter((t) => t.coach_user_id === coachId);
+}
+
+export function saveTemplate(coachId, body) {
+  ensureTemplates();
+  if (db.templates.filter((t) => t.coach_user_id === coachId).length >= 30) return null;
+  const type = TEMPLATE_TYPES.has(body.type) ? body.type : 'custom';
+  const row = {
+    id: id(),
+    coach_user_id: coachId,
+    title: String(body.title || 'Тренировка').trim().slice(0, 120) || 'Тренировка',
+    type,
+    typeLabel: type === 'custom' ? String(body.typeLabel || '').trim().slice(0, 40) : '',
+    km: body.km == null || body.km === '' ? null : Number(body.km) || null,
+    pace: body.pace ? String(body.pace).trim().slice(0, 20) : null,
+    zone: Number(body.zone) || null,
+    dur: Number(body.dur) || null,
+    desc: String(body.desc || '').slice(0, 2000),
+    exercises: type === 'strength' ? cleanTemplateExercises(body.exercises) : [],
+  };
+  db.templates.push(row);
+  save();
+  return row;
+}
+
+export function deleteTemplate(coachId, templateId) {
+  ensureTemplates();
+  const i = db.templates.findIndex((t) => t.id === templateId && t.coach_user_id === coachId);
+  if (i < 0) return false;
+  db.templates.splice(i, 1);
+  save();
+  return true;
 }
 
 export function saveWorkout(w) {

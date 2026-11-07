@@ -28,6 +28,9 @@ import {
   removeLink,
   getWorkouts,
   athletesMissingReports,
+  listTemplates,
+  saveTemplate,
+  deleteTemplate,
   saveWorkout,
   deleteWorkout,
   listDayNotes,
@@ -558,6 +561,22 @@ function moscowIso(shift = 0) {
 app.get('/api/coach/report-gaps', requireAuth, requireRole('coach'), (req, res) => {
   const dates = [moscowIso(0), moscowIso(-1)];
   res.json({ ok: true, athleteIds: athletesMissingReports(req.user.id, dates) });
+});
+
+app.get('/api/coach/templates', requireAuth, requireRole('coach'), (req, res) => {
+  res.json({ ok: true, templates: listTemplates(req.user.id) });
+});
+
+app.post('/api/coach/templates', requireAuth, requireRole('coach'), (req, res) => {
+  const row = saveTemplate(req.user.id, req.body || {});
+  if (!row) return res.status(400).json({ ok: false, error: 'limit', message: 'Можно сохранить не больше 30 шаблонов' });
+  res.json({ ok: true, template: row, templates: listTemplates(req.user.id) });
+});
+
+app.delete('/api/coach/templates/:id', requireAuth, requireRole('coach'), (req, res) => {
+  const ok = deleteTemplate(req.user.id, Number(req.params.id));
+  if (!ok) return res.status(404).json({ ok: false, error: 'not_found' });
+  res.json({ ok: true, templates: listTemplates(req.user.id) });
 });
 
 /** Workouts */

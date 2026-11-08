@@ -937,7 +937,7 @@ function readSportInputs() {
 }
 
 const METRIC_SHOW = {
-  running: ['km', 'pace', 'zone', 'dur'],
+  running: ['km', 'pace', 'elev', 'zone', 'dur'],
   sbu: ['km', 'dur'],
   hurdles: ['meters', 'hurdle', 'hurdleN', 'hurdleSets', 'hurdleRest', 'zone', 'dur'],
   swimming: ['pool', 'meters', 'pace', 'zone', 'dur'],

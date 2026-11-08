@@ -636,6 +636,7 @@ export function normalizeSport(type, body = {}) {
     const km = meters == null ? null : Math.round((meters * sets / 1000) * 1000) / 1000;
     return { ...blank, km, meters, hurdle, hurdleN, hurdleSets, hurdleRest, zone, dur };
   }
+  if (type === 'running') return { ...blank, km: kmIn, pace, elev, zone, dur };
   if (type === 'sbu') return { ...blank, km: kmIn, dur };
   if (type === 'strength') return { ...blank, dur };
   if (type === 'recovery') return { ...blank, km: kmIn, zone, dur };

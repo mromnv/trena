@@ -801,7 +801,7 @@ app.delete('/api/workouts/:id', requireAuth, requireRole('coach'), (req, res) =>
   res.json({ ok: true });
 });
 
-app.post('/api/workouts/:id/report', requireAuth, requireRole('athlete'), (req, res) => {
+app.post('/api/workouts/:id/report', requireAuth, requireRole('athlete'), async (req, res) => {
   const workouts = getWorkouts(req.user.id);
   const w = workouts.find((x) => x.id === Number(req.params.id));
   if (!w) return res.status(404).json({ ok: false, error: 'not_found' });
@@ -829,7 +829,13 @@ app.post('/api/workouts/:id/report', requireAuth, requireRole('athlete'), (req, 
     at: new Date().toISOString(),
   };
   saveWorkout(w);
-  res.json({ ok: true, workout: w });
+  const notice = await notifyReport(req.user, w);
+  res.json({
+    ok: true,
+    workout: w,
+    notifyOk: notice.ok,
+    notifyError: notice.ok ? '' : (notice.error || ''),
+  });
 });
 
 /** Chat */
@@ -870,6 +876,37 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 function userById(id) {
   const n = Number(id);
   return findUserById(n) || findUserById(id);
+}
+
+async function notifyReport(athlete, workout) {
+  const coach = userById(workout.coach_user_id);
+  if (!coach) return { ok: false, error: 'тренер не найден' };
+  const who = athlete?.first_name || athlete?.username || 'Ученик';
+  const status = { completed: 'сделал', partial: 'частично', missed: 'не смог' }[workout.result?.status] || 'отчёт';
+  const r = workout.result || {};
+  const facts = [
+    r.rpe != null ? `RPE ${r.rpe}` : '',
+    r.km != null ? `${r.km} км` : '',
+    r.dur != null ? `${r.dur} мин` : '',
+    r.hr_avg != null ? `пульс ${r.hr_avg}` : '',
+  ].filter(Boolean).join(' · ');
+  const notes = [];
+  if (r.fb) notes.push(String(r.fb).slice(0, 500));
+  for (const item of (r.skipped || []).slice(0, 8)) {
+    if (item?.note) notes.push(`${item.name || 'Упражнение'}: ${item.note}`);
+  }
+  const head = [workout.date, facts].filter(Boolean).join(' · ');
+  const text = [
+    '<b>TRENA</b>',
+    `${escapeHtml(who)} — отчёт: <b>${escapeHtml(status)}</b>`,
+    `<b>${escapeHtml(workout.title || 'Тренировка')}</b>`,
+    head ? escapeHtml(head) : '',
+    notes.length ? escapeHtml(notes.join('\n')) : '',
+    'Откройте кабинет TRENA.',
+  ].filter(Boolean).join('\n');
+  const result = await notifyUser(BOT_TOKEN, coach.telegram_id, text);
+  if (!result.ok) console.warn('[report notify]', coach.id, coach.telegram_id || 'no-id', result.error);
+  return result;
 }
 
 async function notifyWorkout(req, athleteId, row, verb) {

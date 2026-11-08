@@ -1382,14 +1382,17 @@ function renderModal() {
 }
 
 async function submitReport(id, payload) {
-  await api(`/api/workouts/${id}/report`, {
+  const data = await api(`/api/workouts/${id}/report`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
   closeReportModal();
   await loadWorkouts(state.user.id);
   render();
-  toast('Отчёт отправлен');
+  const sent = data.notifyOk
+    ? ' Тренеру отправлено в Telegram.'
+    : (data.notifyOk === false ? ` Telegram не доставил тренеру: ${data.notifyError || 'неизвестная ошибка'}` : '');
+  toast('Отчёт отправлен.' + sent);
 }
 
 async function submitReportFromModal() {

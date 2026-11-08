@@ -67,7 +67,7 @@ function exerciseType(type) {
 const VOLUME_TYPES = new Set(['running', 'cycling', 'swimming', 'sbu', 'hurdles']);
 const WO_TYPES = ['running', 'sbu', 'hurdles', 'swimming', 'cycling', 'strength', 'recovery', 'rest', 'custom'];
 const TYPE_LABEL = {
-  running: 'Бег', sbu: 'СБУ', hurdles: 'Барьеры', swimming: 'Плавание', cycling: 'Вело',
+  running: 'Бег', sbu: 'СБУ', hurdles: 'Барьеры', swimming: 'Бассейн', cycling: 'Вело',
   strength: 'ОФП', recovery: 'Восст.', rest: 'Отдых', custom: 'Свой вид',
 };
 
@@ -911,17 +911,87 @@ function revealWorkoutForm() {
   form.scrollIntoView({ block: 'start' });
 }
 
+function readSportInputs() {
+  const num = (id) => {
+    const raw = $(id)?.value;
+    if (raw === '' || raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+  return {
+    km: num('#wo-km'),
+    pace: $('#wo-pace')?.value.trim() || null,
+    zone: num('#wo-zone'),
+    dur: num('#wo-dur'),
+    pool: num('#wo-pool'),
+    meters: num('#wo-meters'),
+    speed: num('#wo-speed'),
+    elev: num('#wo-elev'),
+    power: num('#wo-power'),
+    powerMax: num('#wo-power-max'),
+    hurdle: num('#wo-hurdle'),
+    hurdleN: num('#wo-hurdle-n'),
+    hurdleSets: num('#wo-hurdle-sets'),
+    hurdleRest: $('#wo-hurdle-rest')?.value.trim() || null,
+  };
+}
+
+const METRIC_SHOW = {
+  running: ['km', 'pace', 'zone', 'dur'],
+  sbu: ['km', 'dur'],
+  hurdles: ['meters', 'hurdle', 'hurdleN', 'hurdleSets', 'hurdleRest', 'zone', 'dur'],
+  swimming: ['pool', 'meters', 'pace', 'zone', 'dur'],
+  cycling: ['km', 'speed', 'elev', 'power', 'powerMax', 'zone', 'dur'],
+  strength: ['dur'],
+  recovery: ['km', 'zone', 'dur'],
+  rest: [],
+  custom: ['km', 'pace', 'zone', 'dur'],
+};
+
+const METRIC_HINT = {
+  swimming: 'Темп — минуты на 100 м. Дистанция всего занятия в метрах.',
+  cycling: 'Скорость в км/ч, набор высоты в метрах, мощность в ваттах.',
+  hurdles: 'Дистанция одного отрезка. Подходы умножают её в километраже недели.',
+  sbu: 'Длину каждого упражнения пишите в метрах в списке ниже.',
+  strength: 'Упражнения, подходы и повторы — в списке ниже.',
+  recovery: 'Лёгкая работа: время и зона. Дистанцию можно не указывать.',
+};
+
+function showMetric(type, name) {
+  return (METRIC_SHOW[type] || METRIC_SHOW.custom).includes(name) ? '' : 'hidden';
+}
+
+function syncMetricForm(type) {
+  const show = new Set(METRIC_SHOW[type] || METRIC_SHOW.custom);
+  document.querySelectorAll('#wo-metrics [data-metric]').forEach((el) => {
+    el.hidden = !show.has(el.dataset.metric);
+  });
+  const box = $('#wo-metrics');
+  if (box) box.hidden = show.size === 0;
+  const paceLabel = document.querySelector('[data-metric="pace"] label');
+  if (paceLabel) paceLabel.textContent = type === 'swimming' ? 'Темп, мин/100 м' : 'Темп, мин/км';
+  const paceInput = $('#wo-pace');
+  if (paceInput && document.activeElement !== paceInput) {
+    paceInput.placeholder = type === 'swimming' ? '2:00' : (state.dossier?.pace || '5:30');
+  }
+  const kmLabel = document.querySelector('[data-metric="km"] label');
+  if (kmLabel) kmLabel.textContent = type === 'sbu' ? 'Общая дистанция, км' : 'Дистанция, км';
+  const hint = $('#wo-metric-hint');
+  if (hint) {
+    hint.textContent = METRIC_HINT[type] || '';
+    hint.hidden = !hint.textContent;
+  }
+  const vdot = $('#wo-vdot');
+  if (vdot) vdot.hidden = type !== 'running';
+  syncExerciseForm(type);
+}
 function formWorkoutFields() {
   const type = $('#wo-type')?.value || 'running';
-  const kmRaw = $('#wo-km')?.value;
   return {
     title: $('#wo-title')?.value.trim() || 'Тренировка',
     type,
     typeLabel: type === 'custom' ? ($('#wo-type-label')?.value.trim() || '') : '',
-    km: kmRaw === '' || kmRaw == null ? null : Number(kmRaw) || null,
-    pace: $('#wo-pace')?.value.trim() || null,
-    zone: Number($('#wo-zone')?.value || 0) || null,
-    dur: Number($('#wo-dur')?.value || 0) || null,
+    ...readSportInputs(),
     desc: $('#wo-desc')?.value.trim() || '',
     exercises: exerciseType(type) ? readExercises() : [],
   };
@@ -975,6 +1045,16 @@ async function applyTemplate(id, date, force = false) {
       pace: tpl.pace,
       zone: tpl.zone,
       dur: tpl.dur,
+      pool: tpl.pool,
+      meters: tpl.meters,
+      speed: tpl.speed,
+      elev: tpl.elev,
+      power: tpl.power,
+      powerMax: tpl.powerMax,
+      hurdle: tpl.hurdle,
+      hurdleN: tpl.hurdleN,
+      hurdleSets: tpl.hurdleSets,
+      hurdleRest: tpl.hurdleRest,
       desc: tpl.desc || '',
       exercises: tpl.exercises || [],
       force: !!force,
@@ -997,22 +1077,11 @@ async function saveWorkoutForm(force = false) {
   const athleteId = state.selectedAthleteId;
   if (!athleteId) return toast('Выберите ученика');
   const editingId = state.editingWorkoutId;
-  const title = $('#wo-title')?.value.trim() || 'Тренировка';
   const date = $('#wo-date')?.value || new Date().toISOString().slice(0, 10);
-  const type = $('#wo-type')?.value || 'running';
-  const kmRaw = $('#wo-km')?.value;
   const payload = {
     athlete_user_id: athleteId,
-    title,
     date,
-    type,
-    typeLabel: type === 'custom' ? ($('#wo-type-label')?.value.trim() || '') : '',
-    km: kmRaw === '' || kmRaw == null ? null : Number(kmRaw) || null,
-    pace: $('#wo-pace')?.value.trim() || null,
-    zone: Number($('#wo-zone')?.value || 0) || null,
-    dur: Number($('#wo-dur')?.value || 0) || null,
-    desc: $('#wo-desc')?.value.trim() || '',
-    exercises: exerciseType(type) ? readExercises() : [],
+    ...formWorkoutFields(),
     alsoAthleteIds: [...document.querySelectorAll('.also-ath:checked')].map((el) => Number(el.value)),
     force: !!force,
   };
@@ -1213,8 +1282,18 @@ function syncExerciseForm(type) {
 
 function workoutBits(w) {
   const bits = [typeName(w)];
-  if (w.km) bits.push(`${w.km} км`);
-  if (w.pace) bits.push(String(w.pace));
+  if (w.pool) bits.push(`бассейн ${w.pool} м`);
+  if ((w.type === 'swimming' || w.type === 'hurdles') && w.meters) bits.push(`${w.meters} м`);
+  else if (w.km) bits.push(`${w.km} км`);
+  if (w.type === 'swimming' && w.pace) bits.push(`${w.pace} мин/100 м`);
+  else if (w.pace) bits.push(`${w.pace} мин/км`);
+  if (w.speed) bits.push(`${w.speed} км/ч`);
+  if (w.elev) bits.push(`набор ${w.elev} м`);
+  if (w.power) bits.push(`${w.power} Вт`);
+  if (w.powerMax) bits.push(`макс. ${w.powerMax} Вт`);
+  if (w.hurdle) bits.push(`барьер ${w.hurdle} см`);
+  if (w.hurdleN) bits.push(`${w.hurdleN} барьеров`);
+  if (w.hurdleSets) bits.push(`${w.hurdleSets} подх.`);
   if (w.zone) bits.push(`зона ${w.zone}`);
   if (w.dur) bits.push(`${w.dur} мин`);
   return bits.filter(Boolean).join(' · ');
@@ -1608,12 +1687,23 @@ function renderCoachPlan(selected) {
           <input id="wo-type-label" maxlength="40" value="${esc(edit?.typeLabel || '')}" placeholder="Например: плиометрика, ОРУ, кросс">
         </div>
         <div><label>Название</label><input id="wo-title" value="${esc(edit?.title || '')}" placeholder="Лёгкий бег 8 км"></div>
-        <div class="wo-metrics">
-          <div><label>Дистанция, км</label><input id="wo-km" type="number" step="0.5" value="${edit?.km != null ? esc(edit.km) : ''}" placeholder="8"></div>
-          <div><label>Темп, мин/км</label><input id="wo-pace" value="${esc(edit?.pace || '')}" placeholder="${esc(d?.pace || '5:30')}"></div>
-          <div><label>Зона</label><select id="wo-zone">${zoneOpts}</select></div>
-          <div><label>Время, мин</label><input id="wo-dur" type="number" min="1" value="${edit?.dur != null ? esc(edit.dur) : ''}" placeholder="45"></div>
+        <div class="wo-metrics" id="wo-metrics" ${ (METRIC_SHOW[woType] || []).length ? '' : 'hidden'}>
+          <div data-metric="pool" ${showMetric(woType, 'pool')}><label>Длина бассейна</label><select id="wo-pool"><option value="25" ${Number(edit?.pool) === 50 ? '' : 'selected'}>25 м</option><option value="50" ${Number(edit?.pool) === 50 ? 'selected' : ''}>50 м</option></select></div>
+          <div data-metric="meters" ${showMetric(woType, 'meters')}><label>Дистанция, м</label><input id="wo-meters" type="number" min="0" step="25" value="${edit?.meters != null ? esc(edit.meters) : ((woType === 'swimming' || woType === 'hurdles') && edit?.km ? esc(Math.round(Number(edit.km) * 1000)) : '')}" placeholder="${woType === 'hurdles' ? '100' : '2000'}"></div>
+          <div data-metric="km" ${showMetric(woType, 'km')}><label>${woType === 'sbu' ? 'Общая дистанция, км' : 'Дистанция, км'}</label><input id="wo-km" type="number" min="0" step="0.1" value="${edit?.km != null ? esc(edit.km) : ''}" placeholder="8"></div>
+          <div data-metric="pace" ${showMetric(woType, 'pace')}><label>${woType === 'swimming' ? 'Темп, мин/100 м' : 'Темп, мин/км'}</label><input id="wo-pace" value="${esc(edit?.pace || '')}" placeholder="${woType === 'swimming' ? '2:00' : esc(d?.pace || '5:30')}"></div>
+          <div data-metric="speed" ${showMetric(woType, 'speed')}><label>Скорость, км/ч</label><input id="wo-speed" type="number" min="0" step="0.1" value="${edit?.speed != null ? esc(edit.speed) : ''}" placeholder="32"></div>
+          <div data-metric="elev" ${showMetric(woType, 'elev')}><label>Набор высоты, м</label><input id="wo-elev" type="number" min="0" step="1" value="${edit?.elev != null ? esc(edit.elev) : ''}" placeholder="400"></div>
+          <div data-metric="power" ${showMetric(woType, 'power')}><label>Мощность средняя, Вт</label><input id="wo-power" type="number" min="0" step="1" value="${edit?.power != null ? esc(edit.power) : ''}" placeholder="220"></div>
+          <div data-metric="powerMax" ${showMetric(woType, 'powerMax')}><label>Мощность макс., Вт</label><input id="wo-power-max" type="number" min="0" step="1" value="${edit?.powerMax != null ? esc(edit.powerMax) : ''}" placeholder="450"></div>
+          <div data-metric="hurdle" ${showMetric(woType, 'hurdle')}><label>Высота барьера, см</label><input id="wo-hurdle" type="number" min="0" step="1" value="${edit?.hurdle != null ? esc(edit.hurdle) : ''}" placeholder="91"></div>
+          <div data-metric="hurdleN" ${showMetric(woType, 'hurdleN')}><label>Барьеров на отрезке</label><input id="wo-hurdle-n" type="number" min="0" step="1" value="${edit?.hurdleN != null ? esc(edit.hurdleN) : ''}" placeholder="10"></div>
+          <div data-metric="hurdleSets" ${showMetric(woType, 'hurdleSets')}><label>Подходы</label><input id="wo-hurdle-sets" type="number" min="1" step="1" value="${edit?.hurdleSets != null ? esc(edit.hurdleSets) : ''}" placeholder="6"></div>
+          <div data-metric="hurdleRest" ${showMetric(woType, 'hurdleRest')}><label>Отдых</label><input id="wo-hurdle-rest" maxlength="24" value="${esc(edit?.hurdleRest || '')}" placeholder="2 мин"></div>
+          <div data-metric="zone" ${showMetric(woType, 'zone')}><label>Зона</label><select id="wo-zone">${zoneOpts}</select></div>
+          <div data-metric="dur" ${showMetric(woType, 'dur')}><label>Время, мин</label><input id="wo-dur" type="number" min="1" value="${edit?.dur != null ? esc(edit.dur) : ''}" placeholder="45"></div>
         </div>
+        <p class="hint" id="wo-metric-hint" ${METRIC_HINT[woType] ? '' : 'hidden'}>${esc(METRIC_HINT[woType] || '')}</p>
         <div id="wo-ex-wrap" ${showEx ? '' : 'hidden'}>
           <label id="wo-ex-label">${showSbu ? 'Упражнения СБУ' : 'Упражнения ОФП'}</label>
           <div id="sbu-presets" ${showSbu ? '' : 'hidden'}>
@@ -1626,7 +1716,7 @@ function renderCoachPlan(selected) {
           <button type="button" class="btn" data-act="add-ex" style="width:auto;margin-top:8px">+ Упражнение</button>
         </div>
         <div><label>Описание</label><textarea id="wo-desc" rows="2" placeholder="Темп, зона, акценты">${esc(edit?.desc || '')}</textarea></div>
-        ${vdotPanelHtml(d)}
+        <div id="wo-vdot" ${woType === 'running' ? '' : 'hidden'}>${vdotPanelHtml(d)}</div>
         ${groupChecks('also-ath') ? `<div><label>Также другим ученикам</label>${groupChecks('also-ath')}<p class="hint">Копия этой тренировки, без отчётов.</p></div>` : ''}
         <div class="row">
           <button class="btn primary" data-act="add-wo" style="width:auto">${edit ? 'Сохранить изменения' : 'Сохранить тренировку'}</button>
@@ -1643,7 +1733,7 @@ function renderCoachPlan(selected) {
         <div class="list-item ${resultTone(w)} ${w.id === state.editingWorkoutId ? 'on-edit' : ''}">
           <div>
             <b>${esc(w.date)}</b> · ${esc(w.title)}
-            <div class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.result ? ' · ' + esc(reportStatusLabel(w.result.status)) : ' · без отчёта'}</div>
+            <div class="muted">${esc(workoutBits(w))}${w.result ? ' · ' + esc(reportStatusLabel(w.result.status)) : ' · без отчёта'}</div>
             ${reportNotesHtml(w)}
             ${workoutDetails(w) ? `<div class="wo-preview">${esc(workoutDetails(w))}</div>` : ''}
           </div>
@@ -2001,12 +2091,12 @@ function weekWorkoutHtml(w, role) {
   if (role === 'coach') {
     return `<button type="button" class="wo ${tone} ${w.id === state.editingWorkoutId ? 'editing' : ''}" draggable="true" data-drag-wo="${w.id}" data-act="edit-wo" data-id="${w.id}">
       <b>${esc(w.title)}</b>${statusMark(w)}
-      <small>${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}${w.pace ? ' · ' + esc(w.pace) : ''}</small>
+      <small>${esc(workoutBits(w))}</small>
     </button>`;
   }
   return `<button type="button" class="wo ${tone}" data-act="open-wo" data-id="${w.id}">
     <b>${esc(w.title)}</b>${statusMark(w)}
-    <small>${esc(typeName(w))}</small>
+    <small>${esc(workoutBits(w))}</small>
   </button>`;
 }
 
@@ -2108,7 +2198,7 @@ function renderDaySheet(role) {
     ${busyBox}
     ${items.length ? items.map((w) => `<article class="wo-read ${resultTone(w)}">
       ${role === 'coach'
-        ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b>${statusMark(w)}<span class="muted">${esc(typeName(w))}${w.km ? ' · ' + w.km + ' км' : ''}</span></button>`
+        ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b>${statusMark(w)}<span class="muted">${esc(workoutBits(w))}</span></button>`
         : `<button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}"><b>${esc(w.title)}</b>${statusMark(w)}<span class="muted">${esc(workoutBits(w))}</span></button>`}
       <div class="wo-full">${workoutBodyHtml(w)}</div>
       ${role === 'coach' && w.result ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}</p>${reportNotesHtml(w)}` : ''}
@@ -2676,9 +2766,8 @@ app.addEventListener('change', (e) => {
   if (e.target?.id === 'wo-type') {
     const t = e.target.value;
     const custom = $('#wo-custom-wrap');
-    const ofp = $('#wo-ex-wrap');
     if (custom) custom.hidden = t !== 'custom';
-    if (ofp) syncExerciseForm(t);
+    syncMetricForm(t);
     return;
   }
   if (e.target?.id !== 'cp-photo-file') return;

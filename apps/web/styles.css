@@ -94,6 +94,7 @@ button { cursor:pointer; }
 .report-actions { display:grid; gap:8px; margin-top:10px; }
 .report-actions .btn { min-height:48px; }
 .wo-metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.wo-metrics[hidden], [data-metric][hidden] { display:none; }
 .start-row { display:grid; grid-template-columns:72px 1fr; gap:8px; margin-bottom:8px; align-items:center; }
 details.panel > summary { font-weight:800; cursor:pointer; min-height:44px; display:flex; align-items:center; }
 .pending-banner { margin-bottom:10px; }

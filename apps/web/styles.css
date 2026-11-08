@@ -263,7 +263,7 @@ svg.chart .pt { fill:var(--accent); }
 .legend { display:flex; gap:14px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--muted); }
 .legend i { display:inline-block; width:10px; height:10px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
 .type-bars { display:grid; gap:8px; }
-.type-row { display:grid; grid-template-columns:88px 1fr 52px; gap:8px; align-items:center; font-size:13px; }
+.type-row { display:grid; grid-template-columns:88px 1fr auto; gap:8px; align-items:center; font-size:13px; }
 .type-row .track { height:10px; background:var(--soft); border-radius:999px; overflow:hidden; border:1px solid var(--line); }
 .type-row .fill { height:100%; background:var(--accent); border-radius:999px; }
 .heat { display:grid; grid-template-columns:64px repeat(7,1fr); gap:5px; align-items:center; font-size:11px; color:var(--muted); }

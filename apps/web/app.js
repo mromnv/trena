@@ -1129,8 +1129,7 @@ function openReportModal(id, status) {
     id,
     status,
     title: w.title,
-    km: w.km,
-    dur: w.dur,
+    type: w.type,
     exercises: (w.exercises || []).filter((e) => e?.name),
   };
   renderModal();
@@ -1299,6 +1298,59 @@ function workoutBits(w) {
   return bits.filter(Boolean).join(' · ');
 }
 
+function factPrefill(w, key, status) {
+  if (w?.result && w.result[key] != null && w.result[key] !== '') return w.result[key];
+  if (status === 'missed') return '';
+  return w?.[key] != null ? w[key] : '';
+}
+
+function reportFieldsHtml(w, status) {
+  const type = w?.type || 'custom';
+  const show = new Set(METRIC_SHOW[type] || METRIC_SHOW.custom);
+  const val = (key) => esc(factPrefill(w, key, status));
+  const field = (key, label, input) => (show.has(key) ? `<div><label>${label}</label>${input}</div>` : '');
+  const zone = factPrefill(w, 'zone', status);
+  const zoneOpts = ['', 1, 2, 3, 4, 5].map((z) =>
+    `<option value="${z}" ${String(zone) === String(z) ? 'selected' : ''}>${z === '' ? '—' : z}</option>`
+  ).join('');
+  return `
+    <p class="hint" style="margin:0">Напишите, как получилось на самом деле. В статистику пойдёт эта цифра, а не план тренера.</p>
+    <div class="wo-metrics">
+      ${field('pool', 'Длина бассейна', `<select id="rep-pool"><option value="25" ${Number(factPrefill(w, 'pool', status)) === 50 ? '' : 'selected'}>25 м</option><option value="50" ${Number(factPrefill(w, 'pool', status)) === 50 ? 'selected' : ''}>50 м</option></select>`)}
+      ${field('meters', 'Факт, м', `<input id="rep-meters" type="number" min="0" step="25" value="${val('meters')}" placeholder="${type === 'hurdles' ? '100' : '2000'}">`)}
+      ${field('km', 'Факт, км', `<input id="rep-km" type="number" min="0" step="0.1" value="${val('km')}" placeholder="8">`)}
+      ${field('pace', type === 'swimming' ? 'Темп, мин/100 м' : 'Темп, мин/км', `<input id="rep-pace" value="${val('pace')}" placeholder="${type === 'swimming' ? '2:05' : '5:40'}">`)}
+      ${field('speed', 'Скорость, км/ч', `<input id="rep-speed" type="number" min="0" step="0.1" value="${val('speed')}" placeholder="28">`)}
+      ${field('elev', 'Набор высоты, м', `<input id="rep-elev" type="number" min="0" step="1" value="${val('elev')}" placeholder="80">`)}
+      ${field('power', 'Мощность средняя, Вт', `<input id="rep-power" type="number" min="0" step="1" value="${val('power')}" placeholder="200">`)}
+      ${field('powerMax', 'Мощность макс., Вт', `<input id="rep-power-max" type="number" min="0" step="1" value="${val('powerMax')}" placeholder="420">`)}
+      ${field('hurdle', 'Высота барьера, см', `<input id="rep-hurdle" type="number" min="0" step="1" value="${val('hurdle')}" placeholder="91">`)}
+      ${field('hurdleN', 'Барьеров на отрезке', `<input id="rep-hurdle-n" type="number" min="0" step="1" value="${val('hurdleN')}" placeholder="10">`)}
+      ${field('hurdleSets', 'Подходы', `<input id="rep-hurdle-sets" type="number" min="0" step="1" value="${val('hurdleSets')}" placeholder="6">`)}
+      ${field('hurdleRest', 'Отдых', `<input id="rep-hurdle-rest" maxlength="24" value="${val('hurdleRest')}" placeholder="2 мин">`)}
+      ${field('zone', 'Пульсовая зона', `<select id="rep-zone">${zoneOpts}</select>`)}
+      ${field('dur', 'Время, мин', `<input id="rep-dur" type="number" min="0" step="1" value="${val('dur')}" placeholder="45">`)}
+    </div>`;
+}
+
+function factBits(w) {
+  const r = w?.result;
+  if (!r) return '';
+  const bits = [];
+  if (r.meters != null) bits.push(`${r.meters} м`);
+  else if (r.km != null) bits.push(`${r.km} км`);
+  if (r.pace) bits.push(w.type === 'swimming' ? `${r.pace} мин/100 м` : `${r.pace} мин/км`);
+  if (r.speed != null) bits.push(`${r.speed} км/ч`);
+  if (r.elev != null) bits.push(`набор ${r.elev} м`);
+  if (r.power != null) bits.push(`${r.power} Вт`);
+  if (r.powerMax != null) bits.push(`макс. ${r.powerMax} Вт`);
+  if (r.zone != null) bits.push(`зона ${r.zone}`);
+  if (r.dur != null) bits.push(`${r.dur} мин`);
+  if (r.hr_avg != null) bits.push(`пульс ${r.hr_avg}${r.hr_max != null ? '/' + r.hr_max : ''}`);
+  if (r.rpe != null) bits.push(`RPE ${r.rpe}`);
+  return bits.join(' · ');
+}
+
 function formatWoDate(iso) {
   try {
     return parseIso(iso).toLocaleDateString('ru-RU', { weekday: 'short', day: 'numeric', month: 'long' });
@@ -1317,7 +1369,7 @@ function openWorkout(id) {
 
 function workoutSheet(w) {
   const reported = w.result
-    ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}${w.result.km != null ? ' · ' + esc(w.result.km) + ' км' : ''}</p>${reportNotesHtml(w)}`
+    ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}${factBits(w) ? ' · ' + esc(factBits(w)) : ''}</p>${reportNotesHtml(w)}`
     : reportActionsHtml(w);
   return `<div class="sheet sheet-wide">
     <h3>${esc(w.title || 'Тренировка')}</h3>
@@ -1348,6 +1400,7 @@ function renderModal() {
     return;
   }
   const stLabel = reportStatusLabel(d.status);
+  const w = state.workouts.find((x) => x.id === d.id) || { type: d.type, title: d.title };
   const exerciseNotes = (d.exercises || []).length
     ? `<div class="rep-ex">
         <label>Если упражнение не получилось</label>
@@ -1358,18 +1411,15 @@ function renderModal() {
       </div>`
     : '';
   m.hidden = false;
-  m.innerHTML = `<div class="sheet">
+  m.innerHTML = `<div class="sheet sheet-wide">
     <h3>Отчёт · ${esc(d.title)}</h3>
-    <p class="muted" style="margin:0 0 12px">Статус: ${esc(stLabel)}. Если что-то не получилось — напишите, тренер это увидит.</p>
+    <p class="muted" style="margin:0 0 12px">Статус: ${esc(stLabel)}.</p>
     <div class="stack">
-      <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div><label>RPE (1–10)</label><input id="rep-rpe" type="number" min="1" max="10" step="1" placeholder="6"></div>
-        <div><label>Факт, км</label><input id="rep-km" type="number" step="0.1" value="${d.km != null ? esc(d.km) : ''}" placeholder="км"></div>
-      </div>
+      ${reportFieldsHtml(w, d.status)}
       <div class="row" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
-        <div><label>Время, мин</label><input id="rep-dur" type="number" min="1" value="${d.dur != null ? esc(d.dur) : ''}" placeholder="мин"></div>
-        <div><label>Пульс ср.</label><input id="rep-hr-avg" type="number" min="40" max="220" placeholder="145"></div>
-        <div><label>Пульс макс.</label><input id="rep-hr-max" type="number" min="40" max="220" placeholder="168"></div>
+        <div><label>RPE (1–10)</label><input id="rep-rpe" type="number" min="1" max="10" step="1" value="${w.result?.rpe != null ? esc(w.result.rpe) : ''}" placeholder="6"></div>
+        <div><label>Пульс ср.</label><input id="rep-hr-avg" type="number" min="40" max="220" value="${w.result?.hr_avg != null ? esc(w.result.hr_avg) : ''}" placeholder="145"></div>
+        <div><label>Пульс макс.</label><input id="rep-hr-max" type="number" min="40" max="220" value="${w.result?.hr_max != null ? esc(w.result.hr_max) : ''}" placeholder="168"></div>
       </div>
       ${exerciseNotes}
       <div><label>Комментарий</label><textarea id="rep-fb" rows="3" maxlength="1000" placeholder="Что не получилось и почему"></textarea></div>
@@ -1400,13 +1450,31 @@ async function submitReportFromModal() {
   if (!d) return;
   const rpe = Number($('#rep-rpe')?.value);
   const notes = [...document.querySelectorAll('.rep-ex-note')];
+  const numOrNull = (id) => {
+    const raw = $(id)?.value;
+    if (raw === '' || raw == null) return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
   await submitReport(d.id, {
     status: d.status,
     rpe: rpe >= 1 && rpe <= 10 ? rpe : null,
-    km: $('#rep-km')?.value || null,
-    dur: $('#rep-dur')?.value || null,
-    hr_avg: $('#rep-hr-avg')?.value || null,
-    hr_max: $('#rep-hr-max')?.value || null,
+    km: numOrNull('#rep-km'),
+    meters: numOrNull('#rep-meters'),
+    pace: $('#rep-pace')?.value.trim() || null,
+    zone: numOrNull('#rep-zone'),
+    dur: numOrNull('#rep-dur'),
+    speed: numOrNull('#rep-speed'),
+    elev: numOrNull('#rep-elev'),
+    power: numOrNull('#rep-power'),
+    powerMax: numOrNull('#rep-power-max'),
+    pool: numOrNull('#rep-pool'),
+    hurdle: numOrNull('#rep-hurdle'),
+    hurdleN: numOrNull('#rep-hurdle-n'),
+    hurdleSets: numOrNull('#rep-hurdle-sets'),
+    hurdleRest: $('#rep-hurdle-rest')?.value.trim() || null,
+    hr_avg: numOrNull('#rep-hr-avg'),
+    hr_max: numOrNull('#rep-hr-max'),
     fb: $('#rep-fb')?.value.trim() || '',
     skipped: notes.map((el, i) => ({
       name: d.exercises[i]?.name || '',
@@ -1824,7 +1892,7 @@ function reportActionsHtml(w) {
 
 function athleteReportRow(w) {
   if (w.result) {
-    return `<div class="report-done"><span class="badge active">${esc(reportStatusLabel(w.result.status))}${w.result.rpe != null ? ' · RPE ' + esc(w.result.rpe) : ''}</span>${reportNotesHtml(w)}</div>`;
+    return `<div class="report-done"><span class="badge active">${esc(reportStatusLabel(w.result.status))}</span>${factBits(w) ? `<div class="muted">${esc(factBits(w))}</div>` : ''}${reportNotesHtml(w)}</div>`;
   }
   return reportActionsHtml(w);
 }
@@ -2204,7 +2272,7 @@ function renderDaySheet(role) {
         ? `<button type="button" class="wo-open" data-act="edit-wo" data-id="${w.id}"><b>${esc(w.title)}</b>${statusMark(w)}<span class="muted">${esc(workoutBits(w))}</span></button>`
         : `<button type="button" class="wo-open" data-act="open-wo" data-id="${w.id}"><b>${esc(w.title)}</b>${statusMark(w)}<span class="muted">${esc(workoutBits(w))}</span></button>`}
       <div class="wo-full">${workoutBodyHtml(w)}</div>
-      ${role === 'coach' && w.result ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}</p>${reportNotesHtml(w)}` : ''}
+      ${role === 'coach' && w.result ? `<p class="muted">Отчёт: ${esc(reportStatusLabel(w.result.status))}${factBits(w) ? ' · ' + esc(factBits(w)) : ''}</p>${reportNotesHtml(w)}` : ''}
       ${role === 'athlete' ? athleteReportRow(w) : ''}
     </article>`).join('') : '<p class="muted">В этот день тренировок нет</p>'}
     ${role === 'coach' ? `<button type="button" class="btn primary put-here" data-act="add-wo-day" data-date="${date}">${items.length ? 'Ещё тренировка' : 'Добавить тренировку'}</button>${templateBarHtml(date)}` : ''}
@@ -2319,16 +2387,52 @@ function periodRange(period, today = new Date()) {
   return { from: isoDate(start), to, label: name };
 }
 
+function factNum(w, key) {
+  if (!w?.result) return null;
+  const v = w.result[key];
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 function actualKm(w) {
-  if (!w.result || w.result.status === 'missed') return 0;
-  if (w.result.km != null) return Number(w.result.km) || 0;
-  if (VOLUME_TYPES.has(w.type)) return Number(w.km) || 0;
-  return 0;
+  if (!w.result) return 0;
+  if (w.type === 'swimming' && factNum(w, 'meters') != null) return factNum(w, 'meters') / 1000;
+  if (w.type === 'hurdles' && factNum(w, 'meters') != null) {
+    const sets = factNum(w, 'hurdleSets');
+    return factNum(w, 'meters') * (sets > 0 ? sets : 1) / 1000;
+  }
+  const km = factNum(w, 'km');
+  return km != null ? km : 0;
 }
 function actualDur(w) {
-  if (!w.result || w.result.status === 'missed') return 0;
-  if (w.result.dur != null) return Number(w.result.dur) || 0;
-  return Number(w.dur) || 0;
+  if (!w.result) return 0;
+  const dur = factNum(w, 'dur');
+  return dur != null ? dur : 0;
+}
+function paceToSec(p) {
+  if (!p) return null;
+  const s = String(p).trim();
+  const m = s.match(/^(\d+):(\d{1,2})$/);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+function secToPace(sec) {
+  const s = Math.round(sec);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, '0')}`;
+}
+function weightedPace(rows) {
+  let acc = 0;
+  let weight = 0;
+  rows.forEach((w) => {
+    const sec = paceToSec(w.result?.pace);
+    const km = actualKm(w);
+    if (sec == null || km <= 0) return;
+    acc += sec * km;
+    weight += km;
+  });
+  return weight ? secToPace(acc / weight) : null;
 }
 function completionScore(status) {
   if (status === 'completed') return 1;
@@ -2354,7 +2458,25 @@ function calcStats(workouts, period) {
   const rpes = reported.map((w) => w.result.rpe).filter((x) => x != null);
   const hrs = reported.map((w) => w.result.hr_avg).filter((x) => x != null);
   const hrMaxes = reported.map((w) => w.result.hr_max).filter((x) => x != null);
-  const zones = load.map((w) => w.zone).filter((x) => x != null);
+  const zones = reported.map((w) => factNum(w, 'zone')).filter((x) => x != null);
+  const elev = round1(sum(reported.map((w) => factNum(w, 'elev') || 0)));
+  const runs = reported.filter((w) => w.type === 'running' || w.type === 'custom');
+  const swims = reported.filter((w) => w.type === 'swimming');
+  const rides = reported.filter((w) => w.type === 'cycling' && factNum(w, 'speed') != null && actualKm(w) > 0);
+  let speedAcc = 0;
+  let speedW = 0;
+  rides.forEach((w) => {
+    speedAcc += factNum(w, 'speed') * actualKm(w);
+    speedW += actualKm(w);
+  });
+  const powers = reported.filter((w) => factNum(w, 'power') != null);
+  let powerAcc = 0;
+  let powerW = 0;
+  powers.forEach((w) => {
+    const weight = actualDur(w) || 1;
+    powerAcc += factNum(w, 'power') * weight;
+    powerW += weight;
+  });
   // Training load ≈ sRPE (RPE × мин) или RPE × км
   const loads = reported.map((w) => {
     if (w.result.rpe == null) return null;
@@ -2367,10 +2489,22 @@ function calcStats(workouts, period) {
   const byType = {};
   load.forEach((w) => {
     const k = w.type || 'other';
-    if (!byType[k]) byType[k] = { planned: 0, fact: 0, count: 0, done: 0 };
+    if (!byType[k]) byType[k] = { planned: 0, fact: 0, plannedDur: 0, factDur: 0, elev: 0, count: 0, done: 0, speedAcc: 0, speedW: 0, powerAcc: 0, powerW: 0 };
     byType[k].count += 1;
-    byType[k].planned += Number(w.km) || 0;
+    byType[k].planned += VOLUME_TYPES.has(w.type) ? (Number(w.km) || 0) : 0;
     byType[k].fact += actualKm(w);
+    byType[k].plannedDur += Number(w.dur) || 0;
+    byType[k].factDur += actualDur(w);
+    byType[k].elev += factNum(w, 'elev') || 0;
+    if (factNum(w, 'speed') != null && actualKm(w) > 0) {
+      byType[k].speedAcc += factNum(w, 'speed') * actualKm(w);
+      byType[k].speedW += actualKm(w);
+    }
+    if (factNum(w, 'power') != null) {
+      const weight = actualDur(w) || 1;
+      byType[k].powerAcc += factNum(w, 'power') * weight;
+      byType[k].powerW += weight;
+    }
     if (w.result && w.result.status !== 'missed') byType[k].done += 1;
   });
   // weekly buckets inside period for charts
@@ -2417,6 +2551,11 @@ function calcStats(workouts, period) {
     hrAvg: avg(hrs),
     hrMax: hrMaxes.length ? Math.max(...hrMaxes) : null,
     zoneAvg: avg(zones),
+    elev,
+    paceRun: weightedPace(runs),
+    paceSwim: weightedPace(swims),
+    speed: speedW ? speedAcc / speedW : null,
+    power: powerW ? powerAcc / powerW : null,
     load: loads.length ? Math.round(sum(loads)) : null,
     byType,
     weeks,
@@ -2511,9 +2650,12 @@ function renderStats() {
     </div>
     <div class="kpis">
       ${kpiHtml('Выполнение плана', s.completion != null ? Math.round(s.completion * 100) + '%' : '—', `${s.done} из ${s.sessions} · пропуск ${s.missed} · ждёт ${s.pending}`, compTone)}
-      ${kpiHtml('Объём, км', fmtNum(s.factKm), `план ${fmtNum(s.plannedKm)} км`)}
+      ${kpiHtml('Объём, км', fmtNum(s.factKm), `план ${fmtNum(s.plannedKm)} км · в факт входят только цифры из отчётов`)}
       ${kpiHtml('Средний RPE', s.rpe != null ? fmtNum(s.rpe) : '—', s.rpe == null ? 'укажите в отчёте' : s.rpe >= 6.5 ? 'высокая нагрузка' : 'нагрузка в норме', rpeTone)}
-      ${kpiHtml('Пульс ср. / макс.', s.hrAvg != null ? `${Math.round(s.hrAvg)} / ${s.hrMax ?? '—'}` : '—', s.zoneAvg != null ? `средняя зона ${fmtNum(s.zoneAvg)}` : 'из отчётов атлета')}
+      ${kpiHtml('Пульс ср. / макс.', s.hrAvg != null ? `${Math.round(s.hrAvg)} / ${s.hrMax ?? '—'}` : '—', 'из отчётов атлета')}
+      ${kpiHtml('Зона', s.zoneAvg != null ? fmtNum(s.zoneAvg) : '—', 'средняя пульсовая зона по факту')}
+      ${kpiHtml('Темп', s.paceRun || s.paceSwim || '—', [s.paceRun ? 'бег, мин/км' : '', s.paceSwim ? `бассейн ${s.paceSwim} мин/100 м` : ''].filter(Boolean).join(' · ') || 'из отчётов')}
+      ${kpiHtml('Набор высоты, м', s.elev ? fmtNum(s.elev, 0) : '—', 'сумма из отчётов')}
       ${kpiHtml('Время, мин', s.factDur || '—', s.plannedDur ? `план ${s.plannedDur} мин` : 'длительность из отчётов')}
       ${kpiHtml('Нагрузка (sRPE)', s.load != null ? s.load : '—', 'RPE × минуты')}
       ${kpiHtml('Серия без пропусков', s.streak, 'тренировок подряд')}
@@ -2537,7 +2679,9 @@ function renderStats() {
           <div class="type-row">
             <span>${esc(TYPE_LABEL[k] || k)}</span>
             <div class="track"><div class="fill" style="width:${Math.round(((v.fact || v.count) / maxFact) * 100)}%"></div></div>
-            <span class="muted">${VOLUME_TYPES.has(k) ? fmtNum(v.fact) + ' км' : v.done + '/' + v.count}</span>
+            <span class="muted">${VOLUME_TYPES.has(k)
+              ? `${fmtNum(v.fact)} / ${fmtNum(v.planned)} км`
+              : (v.factDur || v.plannedDur ? `${Math.round(v.factDur)} / ${Math.round(v.plannedDur)} мин` : `${v.done}/${v.count}`)}${v.elev ? ` · набор ${fmtNum(v.elev, 0)} м` : ''}${v.speedW ? ` · ${fmtNum(v.speedAcc / v.speedW)} км/ч` : ''}${v.powerW ? ` · ${Math.round(v.powerAcc / v.powerW)} Вт` : ''}</span>
           </div>`).join('')}</div>` : '<p class="muted">Пока нет тренировок</p>'}
       </div>
       <div class="panel">
@@ -2559,11 +2703,7 @@ function renderStats() {
           <div class="rpe-box">${r.rpe ?? '—'}<small>RPE</small></div>
           <div style="flex:1">
             <div><b>${esc(w.title)}</b> <span class="badge ${r.status === 'completed' ? 'active' : r.status === 'missed' ? 'pending' : ''}">${esc(reportStatusLabel(r.status))}</span></div>
-            <div class="meta">${esc(w.date)} · ${esc(TYPE_LABEL[w.type] || w.type)}
-              ${actualKm(w) ? ` · ${fmtNum(actualKm(w))} км` : ''}
-              ${r.hr_avg != null ? ` · пульс ${r.hr_avg}${r.hr_max != null ? '/' + r.hr_max : ''}` : ''}
-              ${actualDur(w) ? ` · ${actualDur(w)} мин` : ''}
-            </div>
+            <div class="meta">${esc(w.date)} · ${esc(TYPE_LABEL[w.type] || w.type)}${factBits(w) ? ` · ${esc(factBits(w))}` : ''}</div>
             ${reportNotesHtml(w)}
           </div>
         </div>`;

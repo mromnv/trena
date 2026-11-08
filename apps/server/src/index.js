@@ -32,6 +32,7 @@ import {
   saveTemplate,
   deleteTemplate,
   saveWorkout,
+  normalizeSport,
   deleteWorkout,
   listDayNotes,
   saveDayNote,
@@ -626,10 +627,7 @@ app.post('/api/workouts', requireAuth, requireRole('coach'), async (req, res) =>
     typeLabel: type === 'custom' ? String(body.typeLabel || '').trim().slice(0, 40) : '',
     title: body.title || 'Тренировка',
     desc: body.desc || '',
-    km: body.km ?? null,
-    pace: body.pace ?? null,
-    zone: body.zone ?? null,
-    dur: body.dur ?? null,
+    ...normalizeSport(type, body),
     exercises: type === 'strength' || type === 'sbu' ? cleanExercises(body.exercises) : [],
   };
   // result только если явно передали (иначе при правке плана отчёт сохраняется)
@@ -877,7 +875,7 @@ function userById(id) {
 async function notifyWorkout(req, athleteId, row, verb) {
   const athlete = userById(athleteId);
   const coach = req.user.first_name || req.user.username || 'Тренер';
-  const extra = [row.date, row.km ? `${row.km} км` : '', row.pace || ''].filter(Boolean).join(' · ');
+  const extra = [row.date, row.pool ? `бассейн ${row.pool} м` : '', row.meters ? `${row.meters} м` : (row.km ? `${row.km} км` : ''), row.type === 'swimming' && row.pace ? `${row.pace}/100 м` : (row.pace || ''), row.speed ? `${row.speed} км/ч` : '', row.power ? `${row.power} Вт` : '', row.elev ? `+${row.elev} м` : ''].filter(Boolean).join(' · ');
   const text = `<b>TRENA</b>\n${escapeHtml(coach)} ${verb} тренировку <b>${escapeHtml(row.title || 'Тренировка')}</b>${extra ? `\n${escapeHtml(extra)}` : ''}\nОткройте кабинет TRENA.`;
   const result = await notifyUser(BOT_TOKEN, athlete?.telegram_id, text);
   if (!result.ok) console.warn('[workout notify]', athleteId, athlete?.telegram_id || 'no-id', result.error);

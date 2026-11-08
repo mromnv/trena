@@ -597,20 +597,82 @@ export function listTemplates(coachId) {
   return db.templates.filter((t) => t.coach_user_id === coachId);
 }
 
+function optNum(v) {
+  if (v === '' || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function normalizeSport(type, body = {}) {
+  const pace = body.pace ? String(body.pace).trim().slice(0, 20) : null;
+  const zone = optNum(body.zone);
+  const dur = optNum(body.dur);
+  const kmIn = optNum(body.km);
+  const meters = optNum(body.meters);
+  const pool = Number(body.pool) === 50 ? 50 : (Number(body.pool) === 25 ? 25 : null);
+  const speed = optNum(body.speed);
+  const elev = optNum(body.elev);
+  const power = optNum(body.power);
+  const powerMax = optNum(body.powerMax);
+  const hurdle = optNum(body.hurdle);
+  const hurdleN = optNum(body.hurdleN);
+  const hurdleSets = optNum(body.hurdleSets);
+  const hurdleRest = body.hurdleRest ? String(body.hurdleRest).trim().slice(0, 24) : null;
+  const blank = {
+    km: null, pace: null, zone: null, dur: null, pool: null, meters: null,
+    speed: null, elev: null, power: null, powerMax: null,
+    hurdle: null, hurdleN: null, hurdleSets: null, hurdleRest: null,
+  };
+  if (type === 'rest') return blank;
+  if (type === 'swimming') {
+    const km = meters == null ? null : Math.round((meters / 1000) * 1000) / 1000;
+    return { ...blank, km, meters, pool: pool || 25, pace, zone, dur };
+  }
+  if (type === 'cycling') {
+    return { ...blank, km: kmIn, speed, elev, power, powerMax, zone, dur };
+  }
+  if (type === 'hurdles') {
+    const sets = hurdleSets && hurdleSets > 0 ? hurdleSets : 1;
+    const km = meters == null ? null : Math.round((meters * sets / 1000) * 1000) / 1000;
+    return { ...blank, km, meters, hurdle, hurdleN, hurdleSets, hurdleRest, zone, dur };
+  }
+  if (type === 'sbu') return { ...blank, km: kmIn, dur };
+  if (type === 'strength') return { ...blank, dur };
+  if (type === 'recovery') return { ...blank, km: kmIn, zone, dur };
+  return { ...blank, km: kmIn, pace, zone, dur };
+}
+
+function sportSnapshot(w) {
+  return {
+    km: w.km ?? null,
+    pace: w.pace ?? null,
+    zone: w.zone ?? null,
+    dur: w.dur ?? null,
+    pool: w.pool ?? null,
+    meters: w.meters ?? null,
+    speed: w.speed ?? null,
+    elev: w.elev ?? null,
+    power: w.power ?? null,
+    powerMax: w.powerMax ?? null,
+    hurdle: w.hurdle ?? null,
+    hurdleN: w.hurdleN ?? null,
+    hurdleSets: w.hurdleSets ?? null,
+    hurdleRest: w.hurdleRest ?? null,
+  };
+}
+
 export function saveTemplate(coachId, body) {
   ensureTemplates();
   if (db.templates.filter((t) => t.coach_user_id === coachId).length >= 30) return null;
   const type = TEMPLATE_TYPES.has(body.type) ? body.type : 'custom';
+  const sport = normalizeSport(type, body);
   const row = {
     id: id(),
     coach_user_id: coachId,
     title: String(body.title || 'Тренировка').trim().slice(0, 120) || 'Тренировка',
     type,
     typeLabel: type === 'custom' ? String(body.typeLabel || '').trim().slice(0, 40) : '',
-    km: body.km == null || body.km === '' ? null : Number(body.km) || null,
-    pace: body.pace ? String(body.pace).trim().slice(0, 20) : null,
-    zone: Number(body.zone) || null,
-    dur: Number(body.dur) || null,
+    ...sport,
     desc: String(body.desc || '').slice(0, 2000),
     exercises: type === 'strength' || type === 'sbu' ? cleanTemplateExercises(body.exercises) : [],
   };
@@ -744,10 +806,7 @@ function workoutCopy(w, athleteId, coachId) {
     typeLabel: w.typeLabel || '',
     title: w.title || 'Тренировка',
     desc: w.desc || '',
-    km: w.km ?? null,
-    pace: w.pace ?? null,
-    zone: w.zone ?? null,
-    dur: w.dur ?? null,
+    ...sportSnapshot(w),
     exercises: Array.isArray(w.exercises) ? w.exercises.map((e) => ({ ...e })) : [],
     result: null,
     created_at: new Date().toISOString(),
@@ -813,10 +872,7 @@ export function copyWorkoutsWeek({ coachId, athleteId, from }) {
       typeLabel: w.typeLabel || '',
       title: w.title,
       desc: w.desc || '',
-      km: w.km ?? null,
-      pace: w.pace ?? null,
-      zone: w.zone ?? null,
-      dur: w.dur ?? null,
+      ...sportSnapshot(w),
       exercises: Array.isArray(w.exercises) ? w.exercises : [],
       result: null,
       created_at: new Date().toISOString(),

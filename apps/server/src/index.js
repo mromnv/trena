@@ -817,11 +817,36 @@ app.post('/api/workouts/:id/report', requireAuth, requireRole('athlete'), async 
       note: String(e?.note || '').trim().slice(0, 300),
     }))
     .filter((e) => e.note);
+  const text = (v, n) => {
+    const s = String(v ?? '').trim();
+    return s ? s.slice(0, n) : null;
+  };
+  const meters = num(req.body?.meters);
+  const hurdleSets = num(req.body?.hurdleSets);
+  let km = num(req.body?.km);
+  if (w.type === 'swimming' && meters != null) km = Math.round((meters / 1000) * 1000) / 1000;
+  if (w.type === 'hurdles' && meters != null) {
+    const sets = hurdleSets > 0 ? hurdleSets : 1;
+    km = Math.round((meters * sets / 1000) * 1000) / 1000;
+  }
+  const zone = num(req.body?.zone);
   w.result = {
     status,
     rpe: num(req.body?.rpe),
-    km: num(req.body?.km),
+    km,
+    meters,
+    pace: text(req.body?.pace, 20),
+    zone: zone != null && zone >= 1 && zone <= 5 ? zone : null,
     dur: num(req.body?.dur),
+    speed: num(req.body?.speed),
+    elev: num(req.body?.elev),
+    power: num(req.body?.power),
+    powerMax: num(req.body?.powerMax),
+    pool: Number(req.body?.pool) === 50 ? 50 : (Number(req.body?.pool) === 25 ? 25 : null),
+    hurdle: num(req.body?.hurdle),
+    hurdleN: num(req.body?.hurdleN),
+    hurdleSets,
+    hurdleRest: text(req.body?.hurdleRest, 24),
     hr_avg: num(req.body?.hr_avg),
     hr_max: num(req.body?.hr_max),
     fb: String(req.body?.fb || '').trim().slice(0, 1000),
@@ -885,9 +910,14 @@ async function notifyReport(athlete, workout) {
   const status = { completed: 'сделал', partial: 'частично', missed: 'не смог' }[workout.result?.status] || 'отчёт';
   const r = workout.result || {};
   const facts = [
-    r.rpe != null ? `RPE ${r.rpe}` : '',
-    r.km != null ? `${r.km} км` : '',
+    r.meters != null ? `${r.meters} м` : (r.km != null ? `${r.km} км` : ''),
+    r.pace ? (workout.type === 'swimming' ? `${r.pace}/100 м` : r.pace) : '',
+    r.speed != null ? `${r.speed} км/ч` : '',
+    r.elev != null ? `набор ${r.elev} м` : '',
+    r.power != null ? `${r.power} Вт` : '',
+    r.zone != null ? `зона ${r.zone}` : '',
     r.dur != null ? `${r.dur} мин` : '',
+    r.rpe != null ? `RPE ${r.rpe}` : '',
     r.hr_avg != null ? `пульс ${r.hr_avg}` : '',
   ].filter(Boolean).join(' · ');
   const notes = [];
